@@ -14,6 +14,7 @@ export function Navigation() {
     <header className="topbar">
       <div className="topbar-inner">
 
+        {/* Logo */}
         <Link
           className="brand"
           href="/dashboard"
@@ -36,7 +37,7 @@ export function Navigation() {
           <Link href="/login">Login</Link>
         </nav>
 
-        {/* Mobile Menu Button */}
+        {/* Mobile Hamburger */}
         <button
           type="button"
           className="mobile-menu-button"
@@ -46,10 +47,9 @@ export function Navigation() {
         >
           {menuOpen ? "✕" : "☰"}
         </button>
-
       </div>
 
-      {/* Mobile Navigation */}
+      {/* Mobile Menu */}
       {menuOpen && (
         <nav className="mobile-nav">
 

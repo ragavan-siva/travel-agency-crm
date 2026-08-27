@@ -54,57 +54,106 @@ th { color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing:
   .page-title { font-size: 24px; }
 }
 @media (max-width: 700px) {
+
   .topbar {
-    height: auto;
+    width: 100%;
   }
 
   .topbar-inner {
     min-height: 70px;
-    padding: 8px 14px;
-    gap: 12px;
+    height: 70px;
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
   }
 
+  /* Logo stays on the LEFT */
   .brand {
-    height: 55px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: auto;
+    height: 58px;
+    flex: 0 0 auto;
+    margin: 0;
   }
 
   .brand-logo {
-    width: 190px;
-    height: 50px;
+    display: block;
+    width: 210px;
+    height: 55px;
+    object-fit: contain;
+    object-position: left center;
   }
 
-  .nav {
-    gap: 10px;
-    flex-wrap: wrap;
+  /* Hide desktop menu */
+  .desktop-nav {
+    display: none !important;
   }
 
-  .nav a {
-    font-size: 13px;
+  /* Hamburger stays on the RIGHT */
+  .mobile-menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 46px;
+    height: 46px;
+
+    flex: 0 0 46px;
+
+    margin-left: auto;
+
+    border: 1px solid #d1d5db;
+    border-radius: 9px;
+
+    background: white;
+    color: #111827;
+
+    font-size: 25px;
+    line-height: 1;
+
+    cursor: pointer;
   }
-}
 
-/* =========================
-   MOBILE NAVIGATION
-   ========================= */
+  .mobile-menu-button:hover {
+    background: #f3f4f6;
+  }
 
-.mobile-menu-button {
-  display: none;
-  border: 1px solid #d1d5db;
-  background: white;
-  color: #111827;
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 24px;
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-}
+  /* Mobile dropdown */
+  .mobile-nav {
+    display: flex;
+    flex-direction: column;
 
-.mobile-nav {
-  display: none;
-}
+    width: 100%;
 
+    border-top: 1px solid #e5e7eb;
+
+    background: white;
+
+    padding: 8px 16px 14px;
+  }
+
+  .mobile-nav a {
+    display: block;
+
+    padding: 14px 12px;
+
+    color: #374151;
+
+    text-decoration: none;
+
+    font-size: 16px;
+
+    border-radius: 8px;
+  }
+
+  .mobile-nav a:hover {
+    background: #f3f4f6;
+  }
+} 
 
 /* =========================
    MOBILE
