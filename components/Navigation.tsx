@@ -6,19 +6,19 @@ import { useState } from "react";
 export function Navigation() {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  function closeMenu() {
+  const closeMenu = () => {
     setMenuOpen(false);
-  }
+  };
 
   return (
     <header className="topbar">
+
       <div className="topbar-inner">
 
-        {/* Logo */}
+        {/* LOGO */}
         <Link
-          className="brand"
           href="/dashboard"
-          aria-label="Sri Ragavendra Air Travels"
+          className="brand"
           onClick={closeMenu}
         >
           <img
@@ -28,16 +28,30 @@ export function Navigation() {
           />
         </Link>
 
-        {/* Desktop Navigation */}
-        <nav className="nav desktop-nav">
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/bookings">Bookings</Link>
-          <Link href="/customers">Customers</Link>
-          <Link href="/reports">Reports</Link>
-          <Link href="/login">Login</Link>
+        {/* DESKTOP NAVIGATION */}
+        <nav className="desktop-nav">
+          <Link href="/dashboard">
+            Dashboard
+          </Link>
+
+          <Link href="/bookings">
+            Bookings
+          </Link>
+
+          <Link href="/customers">
+            Customers
+          </Link>
+
+          <Link href="/reports">
+            Reports
+          </Link>
+
+          <Link href="/login">
+            Login
+          </Link>
         </nav>
 
-        {/* Mobile Hamburger */}
+        {/* MOBILE MENU BUTTON */}
         <button
           type="button"
           className="mobile-menu-button"
@@ -47,9 +61,10 @@ export function Navigation() {
         >
           {menuOpen ? "✕" : "☰"}
         </button>
+
       </div>
 
-      {/* Mobile Menu */}
+      {/* MOBILE MENU */}
       {menuOpen && (
         <nav className="mobile-nav">
 
@@ -90,6 +105,7 @@ export function Navigation() {
 
         </nav>
       )}
+
     </header>
   );
 }
