@@ -1,97 +1,169 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+
+type Customer = {
+  id?: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+};
 
 type Booking = {
   id: string;
+  booking_reference: string | null;
+  booking_type: string | null;
+  origin: string | null;
+  destination: string | null;
   departure_at: string | null;
+  passenger_count: number | null;
   ticket_amount: number | null;
   paid_amount: number | null;
+  payment_status: string | null;
   booking_status: string | null;
+  customers: Customer | Customer[] | null;
 };
+
+type BookingRow = Omit<Booking, "customers"> & {
+  customers: Customer | Customer[] | null;
+};
+
+function getCustomer(
+  customers: Customer | Customer[] | null
+): Customer | null {
+  if (Array.isArray(customers)) {
+    return customers[0] || null;
+  }
+
+  return customers;
+}
 
 function money(value: number) {
   return `₹${value.toLocaleString("en-IN", {
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   })}`;
 }
 
-const monthNames = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+function formatDate(value: string | null) {
+  if (!value) return "-";
 
-export default function ReportsPage() {
-  const [bookings, setBookings] =
-    useState<Booking[]>([]);
+  const date = new Date(value);
 
-  const [loading, setLoading] =
-    useState(true);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
 
-  const [selectedYear, setSelectedYear] =
-    useState(new Date().getFullYear());
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
-  const [errorMessage, setErrorMessage] =
-    useState("");
+function formatTime(value: string | null) {
+  if (!value) return "";
 
-  async function loadReports() {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function dateOnly(value: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function todayOnly() {
+  const today = new Date();
+
+  return `${today.getFullYear()}-${String(
+    today.getMonth() + 1
+  ).padStart(2, "0")}-${String(
+    today.getDate()
+  ).padStart(2, "0")}`;
+}
+
+export default function DashboardPage() {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadDashboard() {
     try {
       setLoading(true);
       setErrorMessage("");
 
       const supabase = createClient();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setErrorMessage(
-          "Please login to view reports."
-        );
-        return;
-      }
-
-      const { data, error } =
-        await supabase
-          .from("bookings")
-          .select(`
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(`
+          id,
+          booking_reference,
+          booking_type,
+          origin,
+          destination,
+          departure_at,
+          passenger_count,
+          ticket_amount,
+          paid_amount,
+          payment_status,
+          booking_status,
+          customers (
             id,
-            departure_at,
-            ticket_amount,
-            paid_amount,
-            booking_status
-          `)
-          .order("departure_at", {
-            ascending: true,
-            nullsFirst: false,
-          });
+            full_name,
+            phone,
+            email
+          )
+        `)
+        .order("departure_at", {
+          ascending: true,
+          nullsFirst: false,
+        });
 
       if (error) {
         throw error;
       }
 
-      setBookings(
-        (data as Booking[]) || []
+      const rows = (data as BookingRow[]) || [];
+
+      const normalizedBookings: Booking[] = rows.map(
+        (booking) => ({
+          ...booking,
+          customers: getCustomer(
+            booking.customers
+          ),
+        })
       );
+
+      setBookings(normalizedBookings);
     } catch (error) {
-      console.error(error);
+      console.error("Dashboard error:", error);
 
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to load reports."
+          : "Unable to load dashboard."
       );
     } finally {
       setLoading(false);
@@ -99,622 +171,533 @@ export default function ReportsPage() {
   }
 
   useEffect(() => {
-    loadReports();
-
-    const interval = setInterval(
-      loadReports,
-      30000
-    );
-
-    return () =>
-      clearInterval(interval);
+    loadDashboard();
   }, []);
 
-  const availableYears =
-    useMemo(() => {
-      const years = bookings
-        .filter(
-          (booking) =>
-            booking.departure_at
-        )
-        .map(
-          (booking) =>
-            new Date(
-              booking.departure_at!
-            ).getFullYear()
-        );
-
-      years.push(
-        new Date().getFullYear()
-      );
-
-      return Array.from(
-        new Set(years)
-      ).sort((a, b) => b - a);
-    }, [bookings]);
-
   /*
-   * ONLY BOOKINGS FROM SELECTED YEAR
+   * =========================================
+   * SUMMARY
+   * =========================================
    */
 
-  const yearBookings =
-    bookings.filter((booking) => {
-      if (!booking.departure_at) {
-        return false;
-      }
+  const totalBookings = bookings.length;
 
-      return (
-        new Date(
-          booking.departure_at
-        ).getFullYear() === selectedYear
-      );
-    });
+  const totalTicketValue = bookings.reduce(
+    (sum, booking) =>
+      sum + Number(booking.ticket_amount || 0),
+    0
+  );
+
+  const totalCollected = bookings.reduce(
+    (sum, booking) =>
+      sum + Number(booking.paid_amount || 0),
+    0
+  );
+
+  const outstandingAmount = bookings.reduce(
+    (sum, booking) => {
+      const ticket =
+        Number(booking.ticket_amount || 0);
+
+      const paid =
+        Number(booking.paid_amount || 0);
+
+      return sum + Math.max(ticket - paid, 0);
+    },
+    0
+  );
 
   /*
-   * TOTAL YEAR VALUES
+   * Profit
+   *
+   * Collected - Ticket Value
    */
-
-  const totalTicketValue =
-    yearBookings.reduce(
-      (sum, booking) =>
-        sum +
-        Number(
-          booking.ticket_amount || 0
-        ),
-      0
-    );
-
-  const totalCollected =
-    yearBookings.reduce(
-      (sum, booking) =>
-        sum +
-        Number(
-          booking.paid_amount || 0
-        ),
-      0
-    );
-
   const totalProfit =
-    totalCollected -
-    totalTicketValue;
-
-  const totalOutstanding =
-    Math.max(
-      totalTicketValue -
-        totalCollected,
-      0
-    );
+    totalCollected - totalTicketValue;
 
   /*
-   * MONTHLY REPORT
+   * =========================================
+   * UPCOMING TRAVEL
+   * =========================================
    */
 
-  const monthlyReport =
-    useMemo(() => {
-      return monthNames.map(
-        (name, monthIndex) => {
+  const today = todayOnly();
 
-          const monthBookings =
-            yearBookings.filter(
-              (booking) => {
-                if (
-                  !booking.departure_at
-                ) {
-                  return false;
-                }
-
-                return (
-                  new Date(
-                    booking.departure_at
-                  ).getMonth() ===
-                  monthIndex
-                );
-              }
-            );
-
-          const ticketValue =
-            monthBookings.reduce(
-              (sum, booking) =>
-                sum +
-                Number(
-                  booking.ticket_amount ||
-                    0
-                ),
-              0
-            );
-
-          const collected =
-            monthBookings.reduce(
-              (sum, booking) =>
-                sum +
-                Number(
-                  booking.paid_amount ||
-                    0
-                ),
-              0
-            );
-
-          return {
-            name,
-            bookings:
-              monthBookings.length,
-            ticketValue,
-            collected,
-            profit:
-              collected -
-              ticketValue,
-          };
+  const upcomingTravels = useMemo(() => {
+    return bookings
+      .filter((booking) => {
+        if (!booking.departure_at) {
+          return false;
         }
-      );
-    }, [yearBookings]);
 
-  /*
-   * QUARTERLY REPORT
-   */
-
-  const quarterlyReport =
-    useMemo(() => {
-      return [0, 1, 2, 3].map(
-        (quarterIndex) => {
-
-          const quarterBookings =
-            yearBookings.filter(
-              (booking) => {
-                if (
-                  !booking.departure_at
-                ) {
-                  return false;
-                }
-
-                const month =
-                  new Date(
-                    booking.departure_at
-                  ).getMonth();
-
-                return (
-                  Math.floor(
-                    month / 3
-                  ) === quarterIndex
-                );
-              }
-            );
-
-          const ticketValue =
-            quarterBookings.reduce(
-              (sum, booking) =>
-                sum +
-                Number(
-                  booking.ticket_amount ||
-                    0
-                ),
-              0
-            );
-
-          const collected =
-            quarterBookings.reduce(
-              (sum, booking) =>
-                sum +
-                Number(
-                  booking.paid_amount ||
-                    0
-                ),
-              0
-            );
-
-          return {
-            quarter:
-              `Q${quarterIndex + 1}`,
-            bookings:
-              quarterBookings.length,
-            ticketValue,
-            collected,
-            profit:
-              collected -
-              ticketValue,
-          };
-        }
-      );
-    }, [yearBookings]);
+        return dateOnly(
+          booking.departure_at
+        ) >= today;
+      })
+      .sort((a, b) => {
+        return (
+          new Date(
+            a.departure_at || ""
+          ).getTime() -
+          new Date(
+            b.departure_at || ""
+          ).getTime()
+        );
+      })
+      .slice(0, 5);
+  }, [bookings, today]);
 
   return (
-    <main className="container">
+    <main className="container dashboard-container">
 
-      {/* HEADER */}
+      {/* =====================================
+          HEADER
+          ===================================== */}
 
-      <div className="row">
+      <div className="dashboard-header">
 
         <div>
           <h1 className="page-title">
-            Reports
+            Dashboard
           </h1>
 
           <p className="muted">
-            Profit and business performance
-            based on Travel Date.
+            Travel agency business overview.
           </p>
         </div>
 
-        <select
-          className="input"
-          style={{
-            width: 150,
-          }}
-          value={selectedYear}
-          onChange={(event) =>
-            setSelectedYear(
-              Number(event.target.value)
-            )
-          }
-        >
+        <div className="dashboard-header-actions">
 
-          {availableYears.map(
-            (year) => (
-              <option
-                key={year}
-                value={year}
-              >
-                {year}
-              </option>
-            )
-          )}
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={loadDashboard}
+            disabled={loading}
+          >
+            {loading
+              ? "Loading..."
+              : "Refresh"}
+          </button>
 
-        </select>
+          <Link
+            href="/bookings"
+            className="btn"
+          >
+            + New Booking
+          </Link>
+
+        </div>
 
       </div>
 
+
+      {/* =====================================
+          ERROR
+          ===================================== */}
+
       {errorMessage && (
-        <div
-          className="card"
-          style={{
-            marginTop: 20,
-          }}
-        >
+        <div className="dashboard-error">
           {errorMessage}
         </div>
       )}
 
-      {/* YEAR SUMMARY */}
 
-      <div
-        className="grid grid-4"
-        style={{
-          marginTop: 22,
-        }}
-      >
+      {/* =====================================
+          SUMMARY CARDS
+          ===================================== */}
 
-        <div className="card">
+      <div className="dashboard-summary-grid">
 
-          <div className="stat-label">
+        <div className="dashboard-summary-card">
+
+          <div className="dashboard-card-label">
             Total Bookings
           </div>
 
-          <div className="stat-value">
+          <div className="dashboard-card-value">
             {loading
               ? "..."
-              : yearBookings.length}
+              : totalBookings}
+          </div>
+
+          <div className="dashboard-card-note">
+            All bookings
           </div>
 
         </div>
 
-        <div className="card">
 
-          <div className="stat-label">
+        <div className="dashboard-summary-card">
+
+          <div className="dashboard-card-label">
             Ticket Value
           </div>
 
-          <div className="stat-value">
+          <div className="dashboard-card-value">
             {loading
               ? "..."
               : money(totalTicketValue)}
           </div>
 
+          <div className="dashboard-card-note">
+            Total ticket amount
+          </div>
+
         </div>
 
-        <div className="card">
 
-          <div className="stat-label">
+        <div className="dashboard-summary-card">
+
+          <div className="dashboard-card-label">
             Collected
           </div>
 
-          <div className="stat-value">
+          <div className="dashboard-card-value">
             {loading
               ? "..."
               : money(totalCollected)}
           </div>
 
+          <div className="dashboard-card-note">
+            Customer payments
+          </div>
+
         </div>
 
-        <div
-          className="card"
-          style={{
-            background:
-              totalProfit >= 0
-                ? "#ecfdf5"
-                : "#fef2f2",
-          }}
-        >
 
-          <div className="stat-label">
-            Total Profit
+        <div className="dashboard-summary-card profit-summary-card">
+
+          <div className="dashboard-card-label">
+            Profit
           </div>
 
           <div
-            className="stat-value"
-            style={{
-              color:
-                totalProfit >= 0
-                  ? "green"
-                  : "red",
-            }}
+            className={`dashboard-card-value ${
+              totalProfit < 0
+                ? "negative-profit"
+                : "positive-profit"
+            }`}
           >
             {loading
               ? "..."
               : money(totalProfit)}
           </div>
 
+          <div className="dashboard-card-note">
+            Collected − Ticket Value
+          </div>
+
         </div>
 
       </div>
 
-      {/* OUTSTANDING */}
 
-      <div
-        className="card"
-        style={{
-          marginTop: 20,
-        }}
-      >
+      {/* =====================================
+          OUTSTANDING
+          ===================================== */}
 
-        <div className="row">
+      <div className="dashboard-outstanding">
+
+        <div>
+          <div className="dashboard-card-label">
+            Outstanding Amount
+          </div>
+
+          <div className="dashboard-outstanding-value">
+            {loading
+              ? "..."
+              : money(outstandingAmount)}
+          </div>
+        </div>
+
+        <div className="dashboard-outstanding-note">
+          Amount still pending from customers
+        </div>
+
+      </div>
+
+
+      {/* =====================================
+          UPCOMING TRAVEL
+          ===================================== */}
+
+      <section className="dashboard-section">
+
+        <div className="dashboard-section-header">
 
           <div>
-            <div className="stat-label">
-              Outstanding Customer Amount
-            </div>
+            <h2>
+              Upcoming Travel
+            </h2>
 
-            <div className="stat-value">
-              {money(totalOutstanding)}
-            </div>
+            <p className="muted">
+              Your next customer travels.
+            </p>
           </div>
 
-          <div className="muted">
-            {selectedYear}
-          </div>
+          <Link
+            href="/bookings"
+            className="dashboard-view-link"
+          >
+            View All →
+          </Link>
 
         </div>
 
-      </div>
 
-      {/* MONTHLY REPORT */}
+        {loading && (
+          <div className="dashboard-empty">
+            Loading upcoming travel...
+          </div>
+        )}
 
-      <section
-        className="card"
-        style={{
-          marginTop: 24,
-        }}
-      >
 
-        <h2
-          style={{
-            marginTop: 0,
-          }}
-        >
-          Monthly Profit Report
-        </h2>
+        {!loading &&
+          upcomingTravels.length === 0 && (
+            <div className="dashboard-empty">
 
-        <p className="muted">
-          January to December — {selectedYear}
-        </p>
+              <div className="dashboard-empty-icon">
+                ✈
+              </div>
 
-        <div
-          className="table-wrap"
-          style={{
-            marginTop: 16,
-          }}
-        >
+              <strong>
+                No upcoming travel
+              </strong>
 
-          <table>
+              <p>
+                Bookings with today's or a future
+                travel date will appear here.
+              </p>
 
-            <thead>
+              <Link
+                href="/bookings"
+                className="btn"
+              >
+                + Add Booking
+              </Link>
 
-              <tr>
+            </div>
+          )}
 
-                <th>
-                  Month
-                </th>
 
-                <th>
-                  Bookings
-                </th>
+        {!loading &&
+          upcomingTravels.length > 0 && (
+            <div className="upcoming-travel-list">
 
-                <th>
-                  Ticket Price
-                </th>
+              {upcomingTravels.map(
+                (booking) => {
+                  const customer =
+                    getCustomer(
+                      booking.customers
+                    );
 
-                <th>
-                  Collected
-                </th>
+                  const isToday =
+                    dateOnly(
+                      booking.departure_at
+                    ) === today;
 
-                <th>
-                  Profit
-                </th>
+                  return (
+                    <div
+                      key={booking.id}
+                      className="upcoming-travel-card"
+                    >
 
-              </tr>
+                      {/* DATE */}
 
-            </thead>
+                      <div className="upcoming-date-box">
 
-            <tbody>
+                        <strong>
+                          {booking.departure_at
+                            ? new Date(
+                                booking.departure_at
+                              ).toLocaleDateString(
+                                "en-IN",
+                                {
+                                  day: "2-digit",
+                                }
+                              )
+                            : "--"}
+                        </strong>
 
-              {monthlyReport.map(
-                (month) => (
-                  <tr
-                    key={month.name}
-                  >
+                        <span>
+                          {booking.departure_at
+                            ? new Date(
+                                booking.departure_at
+                              ).toLocaleDateString(
+                                "en-IN",
+                                {
+                                  month: "short",
+                                }
+                              )
+                            : ""}
+                        </span>
 
-                    <td>
-                      <strong>
-                        {month.name}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {month.bookings}
-                    </td>
-
-                    <td>
-                      {money(
-                        month.ticketValue
-                      )}
-                    </td>
-
-                    <td>
-                      {money(
-                        month.collected
-                      )}
-                    </td>
-
-                    <td>
-                      <strong
-                        style={{
-                          color:
-                            month.profit >= 0
-                              ? "green"
-                              : "red",
-                        }}
-                      >
-                        {money(
-                          month.profit
+                        {isToday && (
+                          <small>
+                            Today
+                          </small>
                         )}
-                      </strong>
-                    </td>
 
-                  </tr>
-                )
+                      </div>
+
+
+                      {/* CUSTOMER */}
+
+                      <div className="upcoming-travel-details">
+
+                        <div className="upcoming-customer">
+
+                          <strong>
+                            {customer?.full_name ||
+                              "Unknown Customer"}
+                          </strong>
+
+                          {customer?.phone && (
+                            <span>
+                              {customer.phone}
+                            </span>
+                          )}
+
+                        </div>
+
+
+                        {/* ROUTE */}
+
+                        <div className="upcoming-route">
+
+                          <strong>
+                            {booking.origin ||
+                              "-"}
+                          </strong>
+
+                          <span>
+                            →
+                          </span>
+
+                          <strong>
+                            {booking.destination ||
+                              "-"}
+                          </strong>
+
+                        </div>
+
+
+                        {/* DETAILS */}
+
+                        <div className="upcoming-meta">
+
+                          <span>
+                            Type:{" "}
+                            {booking.booking_type ||
+                              "Single"}
+                          </span>
+
+                          <span>
+                            Passengers:{" "}
+                            {booking.passenger_count ||
+                              1}
+                          </span>
+
+                          {booking.departure_at &&
+                            formatTime(
+                              booking.departure_at
+                            ) && (
+                              <span>
+                                Time:{" "}
+                                {formatTime(
+                                  booking.departure_at
+                                )}
+                              </span>
+                            )}
+
+                        </div>
+
+                      </div>
+
+
+                      {/* AMOUNT */}
+
+                      <div className="upcoming-travel-right">
+
+                        <span>
+                          Ticket Amount
+                        </span>
+
+                        <strong>
+                          {money(
+                            Number(
+                              booking.ticket_amount ||
+                                0
+                            )
+                          )}
+                        </strong>
+
+                        <Link
+                          href="/bookings"
+                          className="small-view-link"
+                        >
+                          View
+                        </Link>
+
+                      </div>
+
+                    </div>
+                  );
+                }
               )}
 
-            </tbody>
-
-          </table>
-
-        </div>
+            </div>
+          )}
 
       </section>
 
-      {/* QUARTERLY REPORT */}
 
-      <section
-        className="card"
-        style={{
-          marginTop: 24,
-        }}
-      >
+      {/* =====================================
+          QUICK LINKS
+          ===================================== */}
 
-        <h2
-          style={{
-            marginTop: 0,
-          }}
+      <section className="dashboard-quick-links">
+
+        <Link
+          href="/bookings"
+          className="dashboard-quick-card"
         >
-          Quarterly Profit Report
-        </h2>
+          <strong>
+            + New Booking
+          </strong>
 
-        <p className="muted">
-          Business performance by quarter —
-          {selectedYear}
-        </p>
+          <span>
+            Add a customer travel booking
+          </span>
+        </Link>
 
-        <div
-          className="table-wrap"
-          style={{
-            marginTop: 16,
-          }}
+
+        <Link
+          href="/customers"
+          className="dashboard-quick-card"
         >
+          <strong>
+            Customers
+          </strong>
 
-          <table>
+          <span>
+            Manage your customers
+          </span>
+        </Link>
 
-            <thead>
 
-              <tr>
+        <Link
+          href="/reports"
+          className="dashboard-quick-card"
+        >
+          <strong>
+            Reports
+          </strong>
 
-                <th>
-                  Quarter
-                </th>
-
-                <th>
-                  Bookings
-                </th>
-
-                <th>
-                  Ticket Price
-                </th>
-
-                <th>
-                  Collected
-                </th>
-
-                <th>
-                  Profit
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {quarterlyReport.map(
-                (quarter) => (
-                  <tr
-                    key={
-                      quarter.quarter
-                    }
-                  >
-
-                    <td>
-                      <strong>
-                        {quarter.quarter}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {quarter.bookings}
-                    </td>
-
-                    <td>
-                      {money(
-                        quarter.ticketValue
-                      )}
-                    </td>
-
-                    <td>
-                      {money(
-                        quarter.collected
-                      )}
-                    </td>
-
-                    <td>
-                      <strong
-                        style={{
-                          color:
-                            quarter.profit >= 0
-                              ? "green"
-                              : "red",
-                        }}
-                      >
-                        {money(
-                          quarter.profit
-                        )}
-                      </strong>
-                    </td>
-
-                  </tr>
-                )
-              )}
-
-            </tbody>
-
-          </table>
-
-        </div>
+          <span>
+            View monthly and quarterly profit
+          </span>
+        </Link>
 
       </section>
 
