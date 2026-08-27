@@ -3,6 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 
+type Customer = {
+  id?: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+};
+
 type Booking = {
   id: string;
   booking_reference: string | null;
@@ -19,32 +26,25 @@ type Booking = {
   notes: string | null;
   created_at: string;
   customer_id: string | null;
+  customers: Customer | null;
+};
 
-  customers:
-    | {
-        id?: string;
-        full_name: string;
-        phone: string | null;
-        email: string | null;
-      }
-    | null;
+type BookingRow = Omit<Booking, "customers"> & {
+  customers: Customer | Customer[] | null;
 };
 
 type BookingForm = {
   fullName: string;
   phone: string;
   email: string;
-
   bookingType: string;
   travelDate: string;
   origin: string;
   destination: string;
   passengerCount: string;
-
   ticketPrice: string;
   collectedAmount: string;
   paymentMethod: string;
-
   bookingStatus: string;
   notes: string;
 };
@@ -53,17 +53,14 @@ const initialForm: BookingForm = {
   fullName: "",
   phone: "",
   email: "",
-
   bookingType: "Single",
   travelDate: "",
   origin: "",
   destination: "",
   passengerCount: "1",
-
   ticketPrice: "",
   collectedAmount: "",
   paymentMethod: "UPI",
-
   bookingStatus: "confirmed",
   notes: "",
 };
@@ -92,6 +89,16 @@ function dateForInput(value: string | null) {
   return `${year}-${month}-${day}`;
 }
 
+function getCustomer(
+  customers: Customer | Customer[] | null
+): Customer | null {
+  if (Array.isArray(customers)) {
+    return customers[0] || null;
+  }
+
+  return customers;
+}
+
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +124,16 @@ export default function BookingsPage() {
 
     try {
       const supabase = createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setMessage("Please login before viewing bookings.");
+        setBookings([]);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("bookings")
@@ -152,7 +169,17 @@ export default function BookingsPage() {
         throw error;
       }
 
-      setBookings((data as Booking[]) || []);
+      const rows = (data as BookingRow[]) || [];
+
+      const normalizedBookings: Booking[] =
+        rows.map((booking) => ({
+          ...booking,
+          customers: getCustomer(
+            booking.customers
+          ),
+        }));
+
+      setBookings(normalizedBookings);
     } catch (error) {
       console.error(error);
 
@@ -244,7 +271,7 @@ export default function BookingsPage() {
   }
 
   async function saveBooking(
-    event: FormEvent
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -264,87 +291,73 @@ export default function BookingsPage() {
         );
       }
 
-      /*
-       * CUSTOMER
-       */
-
       let customerId =
         editingBooking?.customer_id || null;
+
+      /*
+       * UPDATE EXISTING CUSTOMER
+       */
 
       if (customerId) {
         const { error } = await supabase
           .from("customers")
           .update({
-            full_name:
-              form.fullName.trim(),
-
-            phone:
-              form.phone.trim() || null,
-
-            email:
-              form.email.trim() || null,
+            full_name: form.fullName.trim(),
+            phone: form.phone.trim() || null,
+            email: form.email.trim() || null,
           })
           .eq("id", customerId);
 
         if (error) {
           throw error;
         }
-      } else {
-        /*
-         * If phone is available, try to find
-         * an existing customer.
-         */
+      }
 
-        if (form.phone.trim()) {
-          const {
-            data: existingCustomer,
-            error: customerSearchError,
-          } = await supabase
-            .from("customers")
-            .select("id")
-            .eq(
-              "phone",
-              form.phone.trim()
-            )
-            .maybeSingle();
+      /*
+       * FIND EXISTING CUSTOMER
+       */
 
-          if (customerSearchError) {
-            throw customerSearchError;
-          }
+      if (!customerId && form.phone.trim()) {
+        const {
+          data: existingCustomer,
+          error: customerSearchError,
+        } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("phone", form.phone.trim())
+          .maybeSingle();
 
-          customerId =
-            existingCustomer?.id || null;
+        if (customerSearchError) {
+          throw customerSearchError;
         }
 
-        /*
-         * Create customer if not found.
-         */
+        customerId =
+          existingCustomer?.id || null;
+      }
 
-        if (!customerId) {
-          const {
-            data: newCustomer,
-            error: customerError,
-          } = await supabase
-            .from("customers")
-            .insert({
-              full_name:
-                form.fullName.trim(),
+      /*
+       * CREATE NEW CUSTOMER
+       */
 
-              phone:
-                form.phone.trim() || null,
+      if (!customerId) {
+        const {
+          data: newCustomer,
+          error: customerError,
+        } = await supabase
+          .from("customers")
+          .insert({
+            full_name: form.fullName.trim(),
+            phone: form.phone.trim() || null,
+            email: form.email.trim() || null,
+          })
+          .select("id")
+          .single();
 
-              email:
-                form.email.trim() || null,
-            })
-            .select("id")
-            .single();
-
-          if (customerError) {
-            throw customerError;
-          }
-
-          customerId = newCustomer.id;
+        if (customerError) {
+          throw customerError;
         }
+
+        customerId = newCustomer.id;
       }
 
       /*
@@ -360,14 +373,12 @@ export default function BookingsPage() {
       const profit =
         collectedAmount - ticketPrice;
 
-      const balance =
-        Math.max(
-          ticketPrice - collectedAmount,
-          0
-        );
+      const balance = Math.max(
+        ticketPrice - collectedAmount,
+        0
+      );
 
-      let paymentStatus =
-        "pending";
+      let paymentStatus = "pending";
 
       if (
         ticketPrice > 0 &&
@@ -382,7 +393,7 @@ export default function BookingsPage() {
        * TRAVEL DATE
        */
 
-      let departureAt = null;
+      let departureAt: string | null = null;
 
       if (form.travelDate) {
         departureAt = new Date(
@@ -396,56 +407,30 @@ export default function BookingsPage() {
 
       const bookingData = {
         customer_id: customerId,
-
-        booking_type:
-          form.bookingType,
-
-        origin:
-          form.origin.trim() || null,
-
+        booking_type: form.bookingType,
+        origin: form.origin.trim() || null,
         destination:
           form.destination.trim() || null,
-
-        departure_at:
-          departureAt,
-
+        departure_at: departureAt,
         passenger_count:
-          Number(
-            form.passengerCount
-          ) || 1,
-
-        ticket_amount:
-          ticketPrice,
-
-        paid_amount:
-          collectedAmount,
-
-        payment_method:
-          form.paymentMethod,
-
-        payment_status:
-          paymentStatus,
-
-        booking_status:
-          form.bookingStatus,
-
-        notes:
-          form.notes.trim() || null,
+          Number(form.passengerCount) || 1,
+        ticket_amount: ticketPrice,
+        paid_amount: collectedAmount,
+        payment_method: form.paymentMethod,
+        payment_status: paymentStatus,
+        booking_status: form.bookingStatus,
+        notes: form.notes.trim() || null,
       };
 
       /*
-       * EDIT EXISTING BOOKING
+       * UPDATE
        */
 
       if (editingBooking) {
-        const { error } =
-          await supabase
-            .from("bookings")
-            .update(bookingData)
-            .eq(
-              "id",
-              editingBooking.id
-            );
+        const { error } = await supabase
+          .from("bookings")
+          .update(bookingData)
+          .eq("id", editingBooking.id);
 
         if (error) {
           throw error;
@@ -454,32 +439,26 @@ export default function BookingsPage() {
         setMessage(
           `Booking updated successfully. Profit: ${money(
             profit
-          )}. Balance: ${money(
-            balance
-          )}`
+          )}. Balance: ${money(balance)}`
         );
       }
 
       /*
-       * CREATE NEW BOOKING
+       * CREATE
        */
 
       else {
         const bookingReference =
           "TRV-" +
-          Date.now()
-            .toString()
-            .slice(-8);
+          Date.now().toString().slice(-8);
 
-        const { error } =
-          await supabase
-            .from("bookings")
-            .insert({
-              ...bookingData,
-
-              booking_reference:
-                bookingReference,
-            });
+        const { error } = await supabase
+          .from("bookings")
+          .insert({
+            ...bookingData,
+            booking_reference:
+              bookingReference,
+          });
 
         if (error) {
           throw error;
@@ -488,9 +467,7 @@ export default function BookingsPage() {
         setMessage(
           `Booking ${bookingReference} created successfully. Profit: ${money(
             profit
-          )}. Balance: ${money(
-            balance
-          )}`
+          )}. Balance: ${money(balance)}`
         );
       }
 
@@ -511,17 +488,18 @@ export default function BookingsPage() {
   }
 
   /*
-   * DELETE BOOKING
+   * DELETE
    */
 
   async function deleteBooking(
     booking: Booking
   ) {
+    const customerName =
+      booking.customers?.full_name ||
+      "this customer";
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete the booking for ${
-        booking.customers?.full_name ||
-        "this customer"
-      }?`
+      `Are you sure you want to delete the booking for ${customerName}?`
     );
 
     if (!confirmed) {
@@ -531,11 +509,10 @@ export default function BookingsPage() {
     try {
       const supabase = createClient();
 
-      const { error } =
-        await supabase
-          .from("bookings")
-          .delete()
-          .eq("id", booking.id);
+      const { error } = await supabase
+        .from("bookings")
+        .delete()
+        .eq("id", booking.id);
 
       if (error) {
         throw error;
@@ -565,7 +542,7 @@ export default function BookingsPage() {
   }
 
   /*
-   * SEARCH + FILTER
+   * SEARCH
    */
 
   const filteredBookings =
@@ -575,12 +552,13 @@ export default function BookingsPage() {
 
       return bookings.filter(
         (booking) => {
+          const customer =
+            booking.customers;
+
           const searchableText = [
             booking.booking_reference,
-            booking.customers
-              ?.full_name,
-            booking.customers
-              ?.phone,
+            customer?.full_name,
+            customer?.phone,
             booking.origin,
             booking.destination,
           ]
@@ -590,9 +568,7 @@ export default function BookingsPage() {
 
           const matchesSearch =
             !query ||
-            searchableText.includes(
-              query
-            );
+            searchableText.includes(query);
 
           const matchesType =
             typeFilter === "all" ||
@@ -624,12 +600,10 @@ export default function BookingsPage() {
   const profit =
     collectedAmount - ticketPrice;
 
-  const balance =
-    Math.max(
-      ticketPrice -
-        collectedAmount,
-      0
-    );
+  const balance = Math.max(
+    ticketPrice - collectedAmount,
+    0
+  );
 
   return (
     <main className="container">
@@ -685,11 +659,7 @@ export default function BookingsPage() {
           <div className="row">
 
             <div>
-              <h2
-                style={{
-                  margin: 0,
-                }}
-              >
+              <h2 style={{ margin: 0 }}>
                 {editingBooking
                   ? "Edit Booking"
                   : "New Booking"}
@@ -713,11 +683,7 @@ export default function BookingsPage() {
 
           {/* CUSTOMER */}
 
-          <h3
-            style={{
-              marginTop: 24,
-            }}
-          >
+          <h3 style={{ marginTop: 24 }}>
             Customer
           </h3>
 
@@ -787,11 +753,7 @@ export default function BookingsPage() {
 
           {/* TRAVEL */}
 
-          <h3
-            style={{
-              marginTop: 24,
-            }}
-          >
+          <h3 style={{ marginTop: 24 }}>
             Travel Details
           </h3>
 
@@ -897,9 +859,7 @@ export default function BookingsPage() {
                 className="input"
                 type="number"
                 min="1"
-                value={
-                  form.passengerCount
-                }
+                value={form.passengerCount}
                 onChange={(e) =>
                   updateForm(
                     "passengerCount",
@@ -912,13 +872,9 @@ export default function BookingsPage() {
 
           </div>
 
-          {/* MONEY */}
+          {/* PAYMENT */}
 
-          <h3
-            style={{
-              marginTop: 24,
-            }}
-          >
+          <h3 style={{ marginTop: 24 }}>
             Payment & Profit
           </h3>
 
@@ -936,9 +892,7 @@ export default function BookingsPage() {
                 min="0"
                 step="0.01"
                 required
-                value={
-                  form.ticketPrice
-                }
+                value={form.ticketPrice}
                 onChange={(e) =>
                   updateForm(
                     "ticketPrice",
@@ -961,9 +915,7 @@ export default function BookingsPage() {
                 min="0"
                 step="0.01"
                 required
-                value={
-                  form.collectedAmount
-                }
+                value={form.collectedAmount}
                 onChange={(e) =>
                   updateForm(
                     "collectedAmount",
@@ -982,9 +934,7 @@ export default function BookingsPage() {
 
               <select
                 className="input"
-                value={
-                  form.paymentMethod
-                }
+                value={form.paymentMethod}
                 onChange={(e) =>
                   updateForm(
                     "paymentMethod",
@@ -1019,7 +969,7 @@ export default function BookingsPage() {
 
           </div>
 
-          {/* PROFIT */}
+          {/* CALCULATION */}
 
           <div
             className="card"
@@ -1061,9 +1011,7 @@ export default function BookingsPage() {
                     fontWeight: 700,
                   }}
                 >
-                  {money(
-                    collectedAmount
-                  )}
+                  {money(collectedAmount)}
                 </div>
               </div>
 
@@ -1088,13 +1036,8 @@ export default function BookingsPage() {
 
             </div>
 
-            <div
-              style={{
-                marginTop: 12,
-              }}
-            >
-              Outstanding Balance:
-              {" "}
+            <div style={{ marginTop: 12 }}>
+              Outstanding Balance:{" "}
               <strong>
                 {money(balance)}
               </strong>
@@ -1102,7 +1045,7 @@ export default function BookingsPage() {
 
           </div>
 
-          {/* STATUS */}
+          {/* OTHER */}
 
           <h3>
             Other
@@ -1118,9 +1061,7 @@ export default function BookingsPage() {
 
               <select
                 className="input"
-                value={
-                  form.bookingStatus
-                }
+                value={form.bookingStatus}
                 onChange={(e) =>
                   updateForm(
                     "bookingStatus",
@@ -1205,9 +1146,7 @@ export default function BookingsPage() {
               placeholder="Search customer, phone, from or destination..."
               value={search}
               onChange={(e) =>
-                setSearch(
-                  e.target.value
-                )
+                setSearch(e.target.value)
               }
             />
 
@@ -1215,9 +1154,7 @@ export default function BookingsPage() {
               className="input"
               value={typeFilter}
               onChange={(e) =>
-                setTypeFilter(
-                  e.target.value
-                )
+                setTypeFilter(e.target.value)
               }
             >
 
@@ -1240,7 +1177,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* BOOKINGS TABLE */}
+      {/* TABLE */}
 
       {!showForm && (
         <div
@@ -1257,43 +1194,15 @@ export default function BookingsPage() {
               <thead>
 
                 <tr>
-
-                  <th>
-                    Name
-                  </th>
-
-                  <th>
-                    Type
-                  </th>
-
-                  <th>
-                    Travel Date
-                  </th>
-
-                  <th>
-                    From
-                  </th>
-
-                  <th>
-                    To
-                  </th>
-
-                  <th>
-                    Ticket Price
-                  </th>
-
-                  <th>
-                    Collected
-                  </th>
-
-                  <th>
-                    Profit
-                  </th>
-
-                  <th>
-                    Actions
-                  </th>
-
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Travel Date</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Ticket Price</th>
+                  <th>Collected</th>
+                  <th>Profit</th>
+                  <th>Actions</th>
                 </tr>
 
               </thead>
@@ -1311,8 +1220,7 @@ export default function BookingsPage() {
                     </td>
                   </tr>
 
-                ) : filteredBookings.length ===
-                  0 ? (
+                ) : filteredBookings.length === 0 ? (
 
                   <tr>
                     <td
@@ -1327,7 +1235,6 @@ export default function BookingsPage() {
 
                   filteredBookings.map(
                     (booking) => {
-
                       const ticket =
                         Number(
                           booking.ticket_amount ||
@@ -1345,16 +1252,12 @@ export default function BookingsPage() {
 
                       return (
                         <tr
-                          key={
-                            booking.id
-                          }
+                          key={booking.id}
                         >
 
                           <td>
-
                             <strong>
-                              {booking
-                                .customers
+                              {booking.customers
                                 ?.full_name ||
                                 "Unknown"}
                             </strong>
@@ -1362,17 +1265,14 @@ export default function BookingsPage() {
                             <br />
 
                             <span className="muted">
-                              {booking
-                                .customers
+                              {booking.customers
                                 ?.phone ||
                                 ""}
                             </span>
-
                           </td>
 
                           <td>
-                            {booking
-                              .booking_type ||
+                            {booking.booking_type ||
                               "Single"}
                           </td>
 
@@ -1388,8 +1288,7 @@ export default function BookingsPage() {
                           </td>
 
                           <td>
-                            {booking
-                              .destination ||
+                            {booking.destination ||
                               "-"}
                           </td>
 
@@ -1398,13 +1297,10 @@ export default function BookingsPage() {
                           </td>
 
                           <td>
-                            {money(
-                              collected
-                            )}
+                            {money(collected)}
                           </td>
 
                           <td>
-
                             <strong
                               style={{
                                 color:
@@ -1418,18 +1314,15 @@ export default function BookingsPage() {
                                 bookingProfit
                               )}
                             </strong>
-
                           </td>
 
                           <td>
 
                             <div
                               style={{
-                                display:
-                                  "flex",
+                                display: "flex",
                                 gap: 6,
-                                flexWrap:
-                                  "wrap",
+                                flexWrap: "wrap",
                               }}
                             >
 
@@ -1486,7 +1379,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* VIEW DETAILS */}
+      {/* VIEW */}
 
       {viewingBooking && (
         <div
@@ -1499,17 +1392,12 @@ export default function BookingsPage() {
           <div className="row">
 
             <div>
-              <h2
-                style={{
-                  margin: 0,
-                }}
-              >
+              <h2 style={{ margin: 0 }}>
                 Booking Details
               </h2>
 
               <p className="muted">
-                {viewingBooking
-                  .booking_reference ||
+                {viewingBooking.booking_reference ||
                   ""}
               </p>
             </div>
@@ -1569,8 +1457,7 @@ export default function BookingsPage() {
               </div>
 
               <strong>
-                {viewingBooking
-                  .customers
+                {viewingBooking.customers
                   ?.full_name ||
                   "-"}
               </strong>
@@ -1582,8 +1469,7 @@ export default function BookingsPage() {
               </div>
 
               <strong>
-                {viewingBooking
-                  .customers
+                {viewingBooking.customers
                   ?.phone ||
                   "-"}
               </strong>
@@ -1595,8 +1481,7 @@ export default function BookingsPage() {
               </div>
 
               <strong>
-                {viewingBooking
-                  .booking_type ||
+                {viewingBooking.booking_type ||
                   "Single"}
               </strong>
             </div>
@@ -1630,8 +1515,7 @@ export default function BookingsPage() {
               </div>
 
               <strong>
-                {viewingBooking
-                  .destination ||
+                {viewingBooking.destination ||
                   "-"}
               </strong>
             </div>
@@ -1642,8 +1526,7 @@ export default function BookingsPage() {
               </div>
 
               <strong>
-                {viewingBooking
-                  .passenger_count ||
+                {viewingBooking.passenger_count ||
                   1}
               </strong>
             </div>
@@ -1740,8 +1623,7 @@ export default function BookingsPage() {
               </div>
 
               <span className="badge">
-                {viewingBooking
-                  .payment_status ||
+                {viewingBooking.payment_status ||
                   "pending"}
               </span>
             </div>
@@ -1752,8 +1634,7 @@ export default function BookingsPage() {
               </div>
 
               <span className="badge">
-                {viewingBooking
-                  .booking_status ||
+                {viewingBooking.booking_status ||
                   "confirmed"}
               </span>
             </div>
@@ -1766,6 +1647,7 @@ export default function BookingsPage() {
                 marginTop: 20,
               }}
             >
+
               <div className="stat-label">
                 Notes
               </div>
@@ -1773,6 +1655,7 @@ export default function BookingsPage() {
               <p>
                 {viewingBooking.notes}
               </p>
+
             </div>
           )}
 
