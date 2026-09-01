@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase";
 type Booking = {
   id: string;
   departure_at: string | null;
+  booking_date: string | null;
   ticket_amount: number | null;
   paid_amount: number | null;
   booking_status: string | null;
@@ -60,12 +61,13 @@ export default function ReportsPage() {
         .from("bookings")
         .select(`
           id,
+          booking_date,
           departure_at,
           ticket_amount,
           paid_amount,
           booking_status
         `)
-        .order("departure_at", {
+        .order("booking_date", {
           ascending: true,
           nullsFirst: false,
         });
@@ -105,10 +107,10 @@ export default function ReportsPage() {
 
   const availableYears = useMemo(() => {
     const years = bookings
-      .filter((booking) => booking.departure_at)
+      .filter((booking) => booking.booking_date)
       .map((booking) =>
         new Date(
-          booking.departure_at as string
+          booking.booking_date as string
         ).getFullYear()
       );
 
@@ -125,12 +127,12 @@ export default function ReportsPage() {
 
   const yearBookings = useMemo(() => {
     return bookings.filter((booking) => {
-      if (!booking.departure_at) {
+      if (!booking.booking_date) {
         return false;
       }
 
       const date = new Date(
-        booking.departure_at
+        booking.booking_date
       );
 
       return date.getFullYear() === selectedYear;
@@ -169,14 +171,12 @@ export default function ReportsPage() {
     return months.map((monthName, monthIndex) => {
       const monthBookings = yearBookings.filter(
         (booking) => {
-          if (!booking.departure_at) {
+          if (!booking.booking_date) {
             return false;
           }
 
           return (
-            new Date(
-              booking.departure_at
-            ).getMonth() === monthIndex
+            new Date(`${booking.booking_date}T00:00:00`).getMonth() === monthIndex
           );
         }
       );
@@ -218,13 +218,11 @@ export default function ReportsPage() {
       (quarterIndex) => {
         const quarterBookings =
           yearBookings.filter((booking) => {
-            if (!booking.departure_at) {
+            if (!booking.booking_date) {
               return false;
             }
 
-            const month = new Date(
-              booking.departure_at
-            ).getMonth();
+            const month = new Date(`${booking.booking_date}T00:00:00`).getMonth();
 
             return (
               Math.floor(month / 3) ===
@@ -279,7 +277,7 @@ export default function ReportsPage() {
 
           <p className="muted">
             Business and profit reports
-            based on Travel Date.
+            based on Booking Date. Travel Date is used only for upcoming travel and reminders.
           </p>
         </div>
 

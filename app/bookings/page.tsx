@@ -17,6 +17,7 @@ type Booking = {
   origin: string | null;
   destination: string | null;
   departure_at: string | null;
+  booking_date: string | null;
   passenger_count: number | null;
   ticket_amount: number | null;
   paid_amount: number | null;
@@ -38,6 +39,7 @@ type BookingForm = {
   phone: string;
   email: string;
   bookingType: string;
+  bookingDate: string;
   travelDate: string;
   origin: string;
   destination: string;
@@ -54,6 +56,7 @@ const initialForm: BookingForm = {
   phone: "",
   email: "",
   bookingType: "Single",
+  bookingDate: new Date().toISOString().slice(0, 10),
   travelDate: "",
   origin: "",
   destination: "",
@@ -75,6 +78,16 @@ function formatDate(value: string | null) {
   if (!value) return "-";
 
   return new Date(value).toLocaleDateString("en-IN");
+}
+
+function formatBookingDate(value: string | null) {
+  if (!value) return "-";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-IN");
 }
 
 function dateForInput(value: string | null) {
@@ -144,6 +157,7 @@ export default function BookingsPage() {
           origin,
           destination,
           departure_at,
+          booking_date,
           passenger_count,
           ticket_amount,
           paid_amount,
@@ -237,6 +251,9 @@ export default function BookingsPage() {
 
       bookingType:
         booking.booking_type || "Single",
+
+      bookingDate:
+        booking.booking_date || "",
 
       travelDate:
         dateForInput(booking.departure_at),
@@ -390,8 +407,10 @@ export default function BookingsPage() {
       }
 
       /*
-       * TRAVEL DATE
+       * BOOKING DATE + TRAVEL DATE
        */
+
+      let bookingDate: string | null = form.bookingDate || null;
 
       let departureAt: string | null = null;
 
@@ -407,6 +426,7 @@ export default function BookingsPage() {
 
       const bookingData = {
         customer_id: customerId,
+        booking_date: bookingDate,
         booking_type: form.bookingType,
         origin: form.origin.trim() || null,
         destination:
@@ -785,6 +805,27 @@ export default function BookingsPage() {
                 </option>
 
               </select>
+
+            </div>
+
+            <div className="field">
+
+              <label className="label">
+                Booking Date *
+              </label>
+
+              <input
+                className="input"
+                type="date"
+                required
+                value={form.bookingDate}
+                onChange={(e) =>
+                  updateForm(
+                    "bookingDate",
+                    e.target.value
+                  )
+                }
+              />
 
             </div>
 
@@ -1196,6 +1237,7 @@ export default function BookingsPage() {
                 <tr>
                   <th>Name</th>
                   <th>Type</th>
+                  <th>Booking Date</th>
                   <th>Travel Date</th>
                   <th>From</th>
                   <th>To</th>
@@ -1213,7 +1255,7 @@ export default function BookingsPage() {
 
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="muted"
                     >
                       Loading bookings...
@@ -1224,7 +1266,7 @@ export default function BookingsPage() {
 
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="muted"
                     >
                       No bookings found.
@@ -1274,6 +1316,10 @@ export default function BookingsPage() {
                           <td>
                             {booking.booking_type ||
                               "Single"}
+                          </td>
+
+                          <td>
+                            {formatBookingDate(booking.booking_date)}
                           </td>
 
                           <td>
@@ -1483,6 +1529,16 @@ export default function BookingsPage() {
               <strong>
                 {viewingBooking.booking_type ||
                   "Single"}
+              </strong>
+            </div>
+
+            <div>
+              <div className="stat-label">
+                Booking Date
+              </div>
+
+              <strong>
+                {formatBookingDate(viewingBooking.booking_date)}
               </strong>
             </div>
 

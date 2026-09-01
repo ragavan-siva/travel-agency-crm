@@ -176,47 +176,6 @@ export default function DashboardPage() {
 
   /*
    * =========================================
-   * SUMMARY
-   * =========================================
-   */
-
-  const totalBookings = bookings.length;
-
-  const totalTicketValue = bookings.reduce(
-    (sum, booking) =>
-      sum + Number(booking.ticket_amount || 0),
-    0
-  );
-
-  const totalCollected = bookings.reduce(
-    (sum, booking) =>
-      sum + Number(booking.paid_amount || 0),
-    0
-  );
-
-  const outstandingAmount = bookings.reduce(
-    (sum, booking) => {
-      const ticket =
-        Number(booking.ticket_amount || 0);
-
-      const paid =
-        Number(booking.paid_amount || 0);
-
-      return sum + Math.max(ticket - paid, 0);
-    },
-    0
-  );
-
-  /*
-   * Profit
-   *
-   * Collected - Ticket Value
-   */
-  const totalProfit =
-    totalCollected - totalTicketValue;
-
-  /*
-   * =========================================
    * UPCOMING TRAVEL
    * =========================================
    */
@@ -262,7 +221,7 @@ export default function DashboardPage() {
           </h1>
 
           <p className="muted">
-            Travel agency business overview.
+            Upcoming customer travel and daily operations.
           </p>
         </div>
 
@@ -300,121 +259,6 @@ export default function DashboardPage() {
           {errorMessage}
         </div>
       )}
-
-
-      {/* =====================================
-          SUMMARY CARDS
-          ===================================== */}
-
-      <div className="dashboard-summary-grid">
-
-        <div className="dashboard-summary-card">
-
-          <div className="dashboard-card-label">
-            Total Bookings
-          </div>
-
-          <div className="dashboard-card-value">
-            {loading
-              ? "..."
-              : totalBookings}
-          </div>
-
-          <div className="dashboard-card-note">
-            All bookings
-          </div>
-
-        </div>
-
-
-        <div className="dashboard-summary-card">
-
-          <div className="dashboard-card-label">
-            Ticket Value
-          </div>
-
-          <div className="dashboard-card-value">
-            {loading
-              ? "..."
-              : money(totalTicketValue)}
-          </div>
-
-          <div className="dashboard-card-note">
-            Total ticket amount
-          </div>
-
-        </div>
-
-
-        <div className="dashboard-summary-card">
-
-          <div className="dashboard-card-label">
-            Collected
-          </div>
-
-          <div className="dashboard-card-value">
-            {loading
-              ? "..."
-              : money(totalCollected)}
-          </div>
-
-          <div className="dashboard-card-note">
-            Customer payments
-          </div>
-
-        </div>
-
-
-        <div className="dashboard-summary-card profit-summary-card">
-
-          <div className="dashboard-card-label">
-            Profit
-          </div>
-
-          <div
-            className={`dashboard-card-value ${
-              totalProfit < 0
-                ? "negative-profit"
-                : "positive-profit"
-            }`}
-          >
-            {loading
-              ? "..."
-              : money(totalProfit)}
-          </div>
-
-          <div className="dashboard-card-note">
-            Collected − Ticket Value
-          </div>
-
-        </div>
-
-      </div>
-
-
-      {/* =====================================
-          OUTSTANDING
-          ===================================== */}
-
-      <div className="dashboard-outstanding">
-
-        <div>
-          <div className="dashboard-card-label">
-            Outstanding Amount
-          </div>
-
-          <div className="dashboard-outstanding-value">
-            {loading
-              ? "..."
-              : money(outstandingAmount)}
-          </div>
-        </div>
-
-        <div className="dashboard-outstanding-note">
-          Amount still pending from customers
-        </div>
-
-      </div>
 
 
       {/* =====================================
