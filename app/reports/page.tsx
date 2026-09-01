@@ -6,10 +6,33 @@ import { createClient } from "@/lib/supabase";
 type Booking = {
   id: string;
   departure_at: string | null;
-  booking_date: string | null;
   ticket_amount: number | null;
   paid_amount: number | null;
   booking_status: string | null;
+};
+
+type Service = {
+  id: string;
+  service_type: string;
+  other_service_name: string | null;
+  customer_name: string;
+  service_date: string;
+  collected_amount: number | null;
+  cost_amount: number | null;
+};
+
+type MonthlyReport = {
+  month: string;
+  ticketProfit: number;
+  serviceProfit: number;
+  totalProfit: number;
+};
+
+type YearlyReport = {
+  year: number;
+  ticketProfit: number;
+  serviceProfit: number;
+  totalProfit: number;
 };
 
 const months = [
@@ -29,19 +52,48 @@ const months = [
 
 function money(value: number) {
   return `₹${value.toLocaleString("en-IN", {
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   })}`;
+}
+
+function getServiceName(service: Service) {
+  if (
+    service.service_type === "Other" &&
+    service.other_service_name
+  ) {
+    return service.other_service_name;
+  }
+
+  return service.service_type;
+}
+
+function getYear(date: string) {
+  return Number(date.slice(0, 4));
+}
+
+function getMonth(date: string) {
+  return Number(date.slice(5, 7)) - 1;
+}
+
+function getQuarter(month: number) {
+  return Math.floor(month / 3);
 }
 
 export default function ReportsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+
   const [loading, setLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState(
-    new Date().getFullYear()
-  );
   const [error, setError] = useState("");
 
-  async function loadBookings() {
+  /*
+   * "all" = Overall / All Years
+   * number = individual year
+   */
+  const [selectedYear, setSelectedYear] =
+    useState<number | "all">("all");
+
+  async function loadReports() {
     try {
       setLoading(true);
       setError("");
@@ -57,26 +109,50 @@ export default function ReportsPage() {
         return;
       }
 
-      const { data, error } = await supabase
+      const bookingsResult = await supabase
         .from("bookings")
         .select(`
           id,
-          booking_date,
           departure_at,
           ticket_amount,
           paid_amount,
           booking_status
         `)
-        .order("booking_date", {
-          ascending: true,
+        .order("departure_at", {
+          ascending: false,
           nullsFirst: false,
         });
 
-      if (error) {
-        throw error;
+      if (bookingsResult.error) {
+        throw bookingsResult.error;
       }
 
-      setBookings((data as Booking[]) || []);
+      const servicesResult = await supabase
+        .from("services")
+        .select(`
+          id,
+          service_type,
+          other_service_name,
+          customer_name,
+          service_date,
+          collected_amount,
+          cost_amount
+        `)
+        .order("service_date", {
+          ascending: false,
+        });
+
+      if (servicesResult.error) {
+        throw servicesResult.error;
+      }
+
+      setBookings(
+        (bookingsResult.data as Booking[]) || []
+      );
+
+      setServices(
+        (servicesResult.data as Service[]) || []
+      );
     } catch (err) {
       console.error(err);
 
@@ -91,10 +167,10 @@ export default function ReportsPage() {
   }
 
   useEffect(() => {
-    loadBookings();
+    loadReports();
 
     const interval = setInterval(
-      loadBookings,
+      loadReports,
       30000
     );
 
@@ -106,132 +182,224 @@ export default function ReportsPage() {
    */
 
   const availableYears = useMemo(() => {
-    const years = bookings
-      .filter((booking) => booking.booking_date)
-      .map((booking) =>
-        new Date(
-          booking.booking_date as string
-        ).getFullYear()
-      );
+    const years = new Set<number>();
 
-    years.push(new Date().getFullYear());
+    bookings.forEach((booking) => {
+      if (booking.departure_at) {
+        years.add(
+          getYear(booking.departure_at)
+        );
+      }
+    });
 
-    return Array.from(new Set(years)).sort(
+    services.forEach((service) => {
+      if (service.service_date) {
+        years.add(
+          getYear(service.service_date)
+        );
+      }
+    });
+
+    years.add(new Date().getFullYear());
+
+    return Array.from(years).sort(
       (a, b) => b - a
     );
-  }, [bookings]);
+  }, [bookings, services]);
 
   /*
-   * BOOKINGS FOR SELECTED YEAR
+   * FILTERED BOOKINGS
+   *
+   * For tickets, Travel Date is currently
+   * being treated as Booking Date as requested.
    */
 
-  const yearBookings = useMemo(() => {
+  const filteredBookings = useMemo(() => {
+    if (selectedYear === "all") {
+      return bookings;
+    }
+
     return bookings.filter((booking) => {
-      if (!booking.booking_date) {
+      if (!booking.departure_at) {
         return false;
       }
 
-      const date = new Date(
-        booking.booking_date
+      return (
+        getYear(booking.departure_at) ===
+        selectedYear
       );
-
-      return date.getFullYear() === selectedYear;
     });
   }, [bookings, selectedYear]);
 
   /*
-   * YEAR TOTALS
+   * FILTERED SERVICES
    */
 
-  const totalTicketValue = yearBookings.reduce(
-    (sum, booking) =>
-      sum + Number(booking.ticket_amount || 0),
-    0
-  );
+  const filteredServices = useMemo(() => {
+    if (selectedYear === "all") {
+      return services;
+    }
 
-  const totalCollected = yearBookings.reduce(
-    (sum, booking) =>
-      sum + Number(booking.paid_amount || 0),
-    0
-  );
+    return services.filter((service) => {
+      if (!service.service_date) {
+        return false;
+      }
+
+      return (
+        getYear(service.service_date) ===
+        selectedYear
+      );
+    });
+  }, [services, selectedYear]);
+
+  /*
+   * TICKET TOTALS
+   */
+
+  const ticketValue = useMemo(() => {
+    return filteredBookings.reduce(
+      (sum, booking) =>
+        sum +
+        Number(booking.ticket_amount || 0),
+      0
+    );
+  }, [filteredBookings]);
+
+  const ticketCollected = useMemo(() => {
+    return filteredBookings.reduce(
+      (sum, booking) =>
+        sum +
+        Number(booking.paid_amount || 0),
+      0
+    );
+  }, [filteredBookings]);
+
+  const ticketProfit =
+    ticketCollected - ticketValue;
+
+  /*
+   * SERVICE TOTALS
+   */
+
+  const serviceCollected = useMemo(() => {
+    return filteredServices.reduce(
+      (sum, service) =>
+        sum +
+        Number(
+          service.collected_amount || 0
+        ),
+      0
+    );
+  }, [filteredServices]);
+
+  const serviceCost = useMemo(() => {
+    return filteredServices.reduce(
+      (sum, service) =>
+        sum +
+        Number(service.cost_amount || 0),
+      0
+    );
+  }, [filteredServices]);
+
+  const serviceProfit =
+    serviceCollected - serviceCost;
+
+  /*
+   * OVERALL BUSINESS
+   */
 
   const totalProfit =
-    totalCollected - totalTicketValue;
+    ticketProfit + serviceProfit;
 
-  const totalOutstanding = Math.max(
-    totalTicketValue - totalCollected,
-    0
-  );
+  const totalTransactions =
+    filteredBookings.length +
+    filteredServices.length;
+
+  /*
+   * SERVICE-WISE PERFORMANCE
+   */
+
+  const serviceWise = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        jobs: number;
+        collected: number;
+        cost: number;
+        profit: number;
+      }
+    >();
+
+    filteredServices.forEach((service) => {
+      const name =
+        getServiceName(service);
+
+      const existing =
+        map.get(name) || {
+          jobs: 0,
+          collected: 0,
+          cost: 0,
+          profit: 0,
+        };
+
+      const collected = Number(
+        service.collected_amount || 0
+      );
+
+      const cost = Number(
+        service.cost_amount || 0
+      );
+
+      existing.jobs += 1;
+      existing.collected += collected;
+      existing.cost += cost;
+      existing.profit +=
+        collected - cost;
+
+      map.set(name, existing);
+    });
+
+    return Array.from(map.entries())
+      .map(([name, value]) => ({
+        name,
+        ...value,
+      }))
+      .sort(
+        (a, b) =>
+          b.profit - a.profit
+      );
+  }, [filteredServices]);
 
   /*
    * MONTHLY REPORT
+   *
+   * When Overall is selected:
+   * combines January from all years,
+   * February from all years, etc.
    */
 
   const monthlyReport = useMemo(() => {
-    return months.map((monthName, monthIndex) => {
-      const monthBookings = yearBookings.filter(
-        (booking) => {
-          if (!booking.booking_date) {
-            return false;
-          }
-
-          return (
-            new Date(`${booking.booking_date}T00:00:00`).getMonth() === monthIndex
+    return months.map(
+      (monthName, monthIndex) => {
+        const monthBookings =
+          filteredBookings.filter(
+            (booking) =>
+              booking.departure_at &&
+              getMonth(
+                booking.departure_at
+              ) === monthIndex
           );
-        }
-      );
 
-      const ticketValue = monthBookings.reduce(
-        (sum, booking) =>
-          sum +
-          Number(
-            booking.ticket_amount || 0
-          ),
-        0
-      );
+        const monthServices =
+          filteredServices.filter(
+            (service) =>
+              getMonth(
+                service.service_date
+              ) === monthIndex
+          );
 
-      const collected = monthBookings.reduce(
-        (sum, booking) =>
-          sum +
-          Number(
-            booking.paid_amount || 0
-          ),
-        0
-      );
-
-      return {
-        month: monthName,
-        bookings: monthBookings.length,
-        ticketValue,
-        collected,
-        profit: collected - ticketValue,
-      };
-    });
-  }, [yearBookings]);
-
-  /*
-   * QUARTERLY REPORT
-   */
-
-  const quarterlyReport = useMemo(() => {
-    return [0, 1, 2, 3].map(
-      (quarterIndex) => {
-        const quarterBookings =
-          yearBookings.filter((booking) => {
-            if (!booking.booking_date) {
-              return false;
-            }
-
-            const month = new Date(`${booking.booking_date}T00:00:00`).getMonth();
-
-            return (
-              Math.floor(month / 3) ===
-              quarterIndex
-            );
-          });
-
-        const ticketValue =
-          quarterBookings.reduce(
+        const monthTicketValue =
+          monthBookings.reduce(
             (sum, booking) =>
               sum +
               Number(
@@ -240,8 +408,8 @@ export default function ReportsPage() {
             0
           );
 
-        const collected =
-          quarterBookings.reduce(
+        const monthTicketCollected =
+          monthBookings.reduce(
             (sum, booking) =>
               sum +
               Number(
@@ -250,379 +418,1109 @@ export default function ReportsPage() {
             0
           );
 
+        const monthTicketProfit =
+          monthTicketCollected -
+          monthTicketValue;
+
+        const monthServiceCollected =
+          monthServices.reduce(
+            (sum, service) =>
+              sum +
+              Number(
+                service.collected_amount ||
+                  0
+              ),
+            0
+          );
+
+        const monthServiceCost =
+          monthServices.reduce(
+            (sum, service) =>
+              sum +
+              Number(
+                service.cost_amount || 0
+              ),
+            0
+          );
+
+        const monthServiceProfit =
+          monthServiceCollected -
+          monthServiceCost;
+
         return {
-          quarter: `Q${quarterIndex + 1}`,
-          bookings:
-            quarterBookings.length,
-          ticketValue,
-          collected,
-          profit:
-            collected - ticketValue,
+          month: monthName,
+          ticketProfit:
+            monthTicketProfit,
+          serviceProfit:
+            monthServiceProfit,
+          totalProfit:
+            monthTicketProfit +
+            monthServiceProfit,
         };
       }
     );
-  }, [yearBookings]);
+  }, [
+    filteredBookings,
+    filteredServices,
+  ]);
+
+  /*
+   * QUARTERLY REPORT
+   */
+
+  const quarterlyReport = useMemo(() => {
+    return [0, 1, 2, 3].map(
+      (quarterIndex) => {
+        const quarterMonths = [
+          quarterIndex * 3,
+          quarterIndex * 3 + 1,
+          quarterIndex * 3 + 2,
+        ];
+
+        const data =
+          monthlyReport.filter(
+            (_, index) =>
+              quarterMonths.includes(index)
+          );
+
+        const ticketProfit =
+          data.reduce(
+            (sum, item) =>
+              sum + item.ticketProfit,
+            0
+          );
+
+        const serviceProfit =
+          data.reduce(
+            (sum, item) =>
+              sum + item.serviceProfit,
+            0
+          );
+
+        return {
+          quarter: `Q${
+            quarterIndex + 1
+          }`,
+          ticketProfit,
+          serviceProfit,
+          totalProfit:
+            ticketProfit +
+            serviceProfit,
+        };
+      }
+    );
+  }, [monthlyReport]);
+
+  /*
+   * YEARLY REPORT
+   *
+   * Used mainly when Overall is selected.
+   */
+
+  const yearlyReport = useMemo(() => {
+    return availableYears
+      .map((year) => {
+        const yearBookings =
+          bookings.filter(
+            (booking) =>
+              booking.departure_at &&
+              getYear(
+                booking.departure_at
+              ) === year
+          );
+
+        const yearServices =
+          services.filter(
+            (service) =>
+              service.service_date &&
+              getYear(
+                service.service_date
+              ) === year
+          );
+
+        const yearTicketValue =
+          yearBookings.reduce(
+            (sum, booking) =>
+              sum +
+              Number(
+                booking.ticket_amount || 0
+              ),
+            0
+          );
+
+        const yearTicketCollected =
+          yearBookings.reduce(
+            (sum, booking) =>
+              sum +
+              Number(
+                booking.paid_amount || 0
+              ),
+            0
+          );
+
+        const yearTicketProfit =
+          yearTicketCollected -
+          yearTicketValue;
+
+        const yearServiceCollected =
+          yearServices.reduce(
+            (sum, service) =>
+              sum +
+              Number(
+                service.collected_amount ||
+                  0
+              ),
+            0
+          );
+
+        const yearServiceCost =
+          yearServices.reduce(
+            (sum, service) =>
+              sum +
+              Number(
+                service.cost_amount || 0
+              ),
+            0
+          );
+
+        const yearServiceProfit =
+          yearServiceCollected -
+          yearServiceCost;
+
+        return {
+          year,
+          ticketProfit:
+            yearTicketProfit,
+          serviceProfit:
+            yearServiceProfit,
+          totalProfit:
+            yearTicketProfit +
+            yearServiceProfit,
+        };
+      })
+      .sort(
+        (a, b) => b.year - a.year
+      );
+  }, [availableYears, bookings, services]);
+
+  /*
+   * GRAPH MAXIMUMS
+   */
+
+  const maxMonthlyProfit =
+    Math.max(
+      ...monthlyReport.map((item) =>
+        Math.abs(item.totalProfit)
+      ),
+      1
+    );
+
+  const maxYearlyProfit =
+    Math.max(
+      ...yearlyReport.map((item) =>
+        Math.abs(item.totalProfit)
+      ),
+      1
+    );
+
+  /*
+   * DISPLAY LABEL
+   */
+
+  const reportTitle =
+    selectedYear === "all"
+      ? "All-Time Business Performance"
+      : `${selectedYear} Business Performance`;
+
+  if (loading) {
+    return (
+      <main className="container">
+        <div className="card">
+          <p className="muted">
+            Loading business reports...
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="container">
+    <main className="container reports-page">
 
-      {/* HEADER */}
+      {/* =====================================
+          HEADER
+          ===================================== */}
 
-      <div className="row">
-
+      <div className="page-header">
         <div>
           <h1 className="page-title">
-            Reports
+            Business Reports
           </h1>
 
           <p className="muted">
-            Business and profit reports
-            based on Booking Date. Travel Date is used only for upcoming travel and reminders.
+            Complete business performance,
+            profitability and service analysis.
           </p>
         </div>
 
-        <select
-          className="input"
+        <div
           style={{
-            width: 150,
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
           }}
-          value={selectedYear}
-          onChange={(event) =>
-            setSelectedYear(
-              Number(event.target.value)
-            )
-          }
         >
-          {availableYears.map((year) => (
-            <option
-              key={year}
-              value={year}
-            >
-              {year}
+          <select
+            className="input"
+            style={{
+              width: 190,
+            }}
+            value={
+              selectedYear === "all"
+                ? "all"
+                : selectedYear
+            }
+            onChange={(e) => {
+              if (e.target.value === "all") {
+                setSelectedYear("all");
+              } else {
+                setSelectedYear(
+                  Number(e.target.value)
+                );
+              }
+            }}
+          >
+            <option value="all">
+              Overall / All Years
             </option>
-          ))}
-        </select>
 
+            {availableYears.map((year) => (
+              <option
+                key={year}
+                value={year}
+              >
+                {year}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className="btn secondary"
+            onClick={loadReports}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
-
-      {/* ERROR */}
 
       {error && (
         <div
           className="card"
           style={{
-            marginTop: 20,
+            marginTop: 18,
+            borderColor: "#fecaca",
           }}
         >
           {error}
         </div>
       )}
 
-      {/* SUMMARY */}
+      {/* =====================================
+          REPORT PERIOD
+          ===================================== */}
 
       <div
-        className="grid grid-4"
+        className="card"
         style={{
-          marginTop: 22,
+          marginTop: 24,
+          background:
+            "linear-gradient(135deg, #0f172a, #1e293b)",
+          color: "white",
         }}
       >
-
-        <div className="card">
-          <div className="stat-label">
-            Total Bookings
-          </div>
-
-          <div className="stat-value">
-            {loading
-              ? "..."
-              : yearBookings.length}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="stat-label">
-            Ticket Value
-          </div>
-
-          <div className="stat-value">
-            {loading
-              ? "..."
-              : money(totalTicketValue)}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="stat-label">
-            Collected
-          </div>
-
-          <div className="stat-value">
-            {loading
-              ? "..."
-              : money(totalCollected)}
-          </div>
-        </div>
-
         <div
-          className="card"
           style={{
-            background:
-              totalProfit >= 0
-                ? "#ecfdf5"
-                : "#fef2f2",
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems: "center",
+            gap: 20,
+            flexWrap: "wrap",
           }}
         >
-          <div className="stat-label">
-            Total Profit
+          <div>
+            <div
+              style={{
+                fontSize: 13,
+                opacity: 0.7,
+              }}
+            >
+              REPORT PERIOD
+            </div>
+
+            <h2
+              style={{
+                margin:
+                  "6px 0 0",
+                color: "white",
+              }}
+            >
+              {reportTitle}
+            </h2>
           </div>
 
           <div
-            className="stat-value"
             style={{
-              color:
-                totalProfit >= 0
-                  ? "green"
-                  : "red",
+              textAlign: "right",
             }}
           >
-            {loading
-              ? "..."
-              : money(totalProfit)}
-          </div>
-        </div>
-
-      </div>
-
-      {/* OUTSTANDING */}
-
-      <div
-        className="card"
-        style={{
-          marginTop: 20,
-        }}
-      >
-
-        <div className="row">
-
-          <div>
-            <div className="stat-label">
-              Outstanding Customer Amount
+            <div
+              style={{
+                fontSize: 13,
+                opacity: 0.7,
+              }}
+            >
+              TOTAL PROFIT
             </div>
 
-            <div className="stat-value">
-              {money(totalOutstanding)}
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 700,
+                marginTop: 3,
+              }}
+            >
+              {money(totalProfit)}
             </div>
           </div>
-
-          <strong>
-            {selectedYear}
-          </strong>
-
         </div>
-
       </div>
 
-      {/* MONTHLY REPORT */}
+      {/* =====================================
+          EXECUTIVE OVERVIEW
+          ===================================== */}
 
       <section
-        className="card"
         style={{
           marginTop: 24,
         }}
       >
+        <div className="report-section-title">
+          <div>
+            <h2>
+              Executive Overview
+            </h2>
 
-        <h2
-          style={{
-            marginTop: 0,
-          }}
-        >
-          Monthly Profit Report
-        </h2>
-
-        <p className="muted">
-          Monthly performance for{" "}
-          {selectedYear}
-        </p>
-
-        <div
-          className="table-wrap"
-          style={{
-            marginTop: 16,
-          }}
-        >
-
-          <table>
-
-            <thead>
-
-              <tr>
-                <th>Month</th>
-                <th>Bookings</th>
-                <th>Ticket Price</th>
-                <th>Collected</th>
-                <th>Profit</th>
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {monthlyReport.map(
-                (month) => (
-                  <tr
-                    key={month.month}
-                  >
-
-                    <td>
-                      <strong>
-                        {month.month}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {month.bookings}
-                    </td>
-
-                    <td>
-                      {money(
-                        month.ticketValue
-                      )}
-                    </td>
-
-                    <td>
-                      {money(
-                        month.collected
-                      )}
-                    </td>
-
-                    <td>
-                      <strong
-                        style={{
-                          color:
-                            month.profit >= 0
-                              ? "green"
-                              : "red",
-                        }}
-                      >
-                        {money(
-                          month.profit
-                        )}
-                      </strong>
-                    </td>
-
-                  </tr>
-                )
-              )}
-
-            </tbody>
-
-          </table>
-
+            <p className="muted">
+              Key business performance
+              indicators
+            </p>
+          </div>
         </div>
 
+        <div
+          className="grid grid-4"
+          style={{
+            marginTop: 14,
+          }}
+        >
+          <div className="card report-stat">
+            <span className="muted">
+              Total Transactions
+            </span>
+
+            <strong>
+              {totalTransactions}
+            </strong>
+
+            <small>
+              Tickets + Services
+            </small>
+          </div>
+
+          <div className="card report-stat">
+            <span className="muted">
+              Ticket Profit
+            </span>
+
+            <strong>
+              {money(ticketProfit)}
+            </strong>
+
+            <small>
+              Flight bookings
+            </small>
+          </div>
+
+          <div className="card report-stat">
+            <span className="muted">
+              Service Profit
+            </span>
+
+            <strong>
+              {money(serviceProfit)}
+            </strong>
+
+            <small>
+              Other services
+            </small>
+          </div>
+
+          <div className="card report-stat report-stat-highlight">
+            <span className="muted">
+              Total Business Profit
+            </span>
+
+            <strong>
+              {money(totalProfit)}
+            </strong>
+
+            <small>
+              Tickets + Services
+            </small>
+          </div>
+        </div>
       </section>
 
-      {/* QUARTERLY REPORT */}
+      {/* =====================================
+          ALL-TIME YEARLY GRAPH
+          ===================================== */}
+
+      {selectedYear === "all" &&
+        yearlyReport.length > 0 && (
+          <section
+            className="card report-panel"
+            style={{
+              marginTop: 24,
+            }}
+          >
+            <div className="report-panel-header">
+              <div>
+                <h2>
+                  Profit by Year
+                </h2>
+
+                <p className="muted">
+                  All-time business
+                  profitability
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="profit-chart"
+              style={{
+                marginTop: 25,
+              }}
+            >
+              {yearlyReport.map(
+                (item) => {
+                  const height =
+                    Math.max(
+                      (Math.abs(
+                        item.totalProfit
+                      ) /
+                        maxYearlyProfit) *
+                        100,
+                      item.totalProfit === 0
+                        ? 2
+                        : 5
+                    );
+
+                  return (
+                    <div
+                      className="profit-chart-column"
+                      key={item.year}
+                    >
+                      <div className="profit-chart-value">
+                        {item.totalProfit !==
+                        0
+                          ? money(
+                              item.totalProfit
+                            )
+                          : ""}
+                      </div>
+
+                      <div className="profit-chart-bar-area">
+                        <div
+                          className="profit-chart-bar"
+                          style={{
+                            height: `${height}%`,
+                          }}
+                        />
+                      </div>
+
+                      <span>
+                        {item.year}
+                      </span>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </section>
+        )}
+
+      {/* =====================================
+          MONTHLY PROFIT
+          ===================================== */}
 
       <section
-        className="card"
+        className="card report-panel"
         style={{
           marginTop: 24,
-          marginBottom: 40,
         }}
       >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Monthly Profit Performance
+            </h2>
 
-        <h2
-          style={{
-            marginTop: 0,
-          }}
-        >
-          Quarterly Profit Report
-        </h2>
-
-        <p className="muted">
-          Quarterly performance for{" "}
-          {selectedYear}
-        </p>
+            <p className="muted">
+              {selectedYear === "all"
+                ? "Combined monthly performance across all years"
+                : `Monthly performance for ${selectedYear}`}
+            </p>
+          </div>
+        </div>
 
         <div
-          className="table-wrap"
+          className="profit-chart"
           style={{
-            marginTop: 16,
+            marginTop: 25,
           }}
         >
+          {monthlyReport.map(
+            (item) => {
+              const height =
+                Math.max(
+                  (Math.abs(
+                    item.totalProfit
+                  ) /
+                    maxMonthlyProfit) *
+                    100,
+                  item.totalProfit === 0
+                    ? 2
+                    : 5
+                );
 
-          <table>
+              return (
+                <div
+                  className="profit-chart-column"
+                  key={item.month}
+                >
+                  <div className="profit-chart-value">
+                    {item.totalProfit !==
+                    0
+                      ? money(
+                          item.totalProfit
+                        )
+                      : ""}
+                  </div>
 
+                  <div className="profit-chart-bar-area">
+                    <div
+                      className="profit-chart-bar"
+                      style={{
+                        height: `${height}%`,
+                      }}
+                    />
+                  </div>
+
+                  <span>
+                    {item.month.slice(
+                      0,
+                      3
+                    )}
+                  </span>
+                </div>
+              );
+            }
+          )}
+        </div>
+      </section>
+
+      {/* =====================================
+          TICKET BOOKINGS
+          ===================================== */}
+
+      <section
+        className="card report-panel"
+        style={{
+          marginTop: 24,
+        }}
+      >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Ticket Bookings
+            </h2>
+
+            <p className="muted">
+              Flight booking financial
+              performance
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="grid grid-4"
+          style={{
+            marginTop: 20,
+          }}
+        >
+          <div className="report-mini-stat">
+            <span>
+              Total Bookings
+            </span>
+
+            <strong>
+              {filteredBookings.length}
+            </strong>
+          </div>
+
+          <div className="report-mini-stat">
+            <span>
+              Ticket Value
+            </span>
+
+            <strong>
+              {money(ticketValue)}
+            </strong>
+          </div>
+
+          <div className="report-mini-stat">
+            <span>
+              Collected
+            </span>
+
+            <strong>
+              {money(ticketCollected)}
+            </strong>
+          </div>
+
+          <div className="report-mini-stat">
+            <span>
+              Profit
+            </span>
+
+            <strong>
+              {money(ticketProfit)}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      {/* =====================================
+          OTHER SERVICES
+          ===================================== */}
+
+      <section
+        className="card report-panel"
+        style={{
+          marginTop: 24,
+        }}
+      >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Other Services
+            </h2>
+
+            <p className="muted">
+              RMI, VISA, Attestation,
+              Dummy Ticket and other
+              services
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="grid grid-3"
+          style={{
+            marginTop: 20,
+          }}
+        >
+          <div className="report-mini-stat">
+            <span>
+              Total Services
+            </span>
+
+            <strong>
+              {filteredServices.length}
+            </strong>
+          </div>
+
+          <div className="report-mini-stat">
+            <span>
+              Service Cost
+            </span>
+
+            <strong>
+              {money(serviceCost)}
+            </strong>
+          </div>
+
+          <div className="report-mini-stat">
+            <span>
+              Service Profit
+            </span>
+
+            <strong>
+              {money(serviceProfit)}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      {/* =====================================
+          SERVICE-WISE PERFORMANCE
+          ===================================== */}
+
+      <section
+        className="card report-panel"
+        style={{
+          marginTop: 24,
+        }}
+      >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Service-wise Performance
+            </h2>
+
+            <p className="muted">
+              Detailed profitability
+              by service
+            </p>
+          </div>
+        </div>
+
+        {serviceWise.length === 0 ? (
+          <p
+            className="muted"
+            style={{
+              marginTop: 20,
+            }}
+          >
+            No service records found
+            for this period.
+          </p>
+        ) : (
+          <div
+            style={{
+              overflowX: "auto",
+              marginTop: 20,
+            }}
+          >
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    Service
+                  </th>
+
+                  <th>
+                    Jobs
+                  </th>
+
+                  <th>
+                    Collected
+                  </th>
+
+                  <th>
+                    Cost
+                  </th>
+
+                  <th>
+                    Profit
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {serviceWise.map(
+                  (item) => (
+                    <tr
+                      key={item.name}
+                    >
+                      <td>
+                        <strong>
+                          {item.name}
+                        </strong>
+                      </td>
+
+                      <td>
+                        {item.jobs}
+                      </td>
+
+                      <td>
+                        {money(
+                          item.collected
+                        )}
+                      </td>
+
+                      <td>
+                        {money(
+                          item.cost
+                        )}
+                      </td>
+
+                      <td>
+                        <strong>
+                          {money(
+                            item.profit
+                          )}
+                        </strong>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* =====================================
+          MONTHLY TABLE
+          ===================================== */}
+
+      <section
+        className="card report-panel"
+        style={{
+          marginTop: 24,
+        }}
+      >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Monthly Performance
+            </h2>
+
+            <p className="muted">
+              Profit contribution by
+              month
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            overflowX: "auto",
+            marginTop: 20,
+          }}
+        >
+          <table className="data-table">
             <thead>
-
               <tr>
-                <th>Quarter</th>
-                <th>Bookings</th>
-                <th>Ticket Price</th>
-                <th>Collected</th>
-                <th>Profit</th>
-              </tr>
+                <th>
+                  Month
+                </th>
 
+                <th>
+                  Ticket Profit
+                </th>
+
+                <th>
+                  Service Profit
+                </th>
+
+                <th>
+                  Total Profit
+                </th>
+              </tr>
             </thead>
 
             <tbody>
+              {monthlyReport.map(
+                (item) => (
+                  <tr key={item.month}>
+                    <td>
+                      <strong>
+                        {item.month}
+                      </strong>
+                    </td>
 
-              {quarterlyReport.map(
-                (quarter) => (
-                  <tr
-                    key={
-                      quarter.quarter
-                    }
-                  >
+                    <td>
+                      {money(
+                        item.ticketProfit
+                      )}
+                    </td>
+
+                    <td>
+                      {money(
+                        item.serviceProfit
+                      )}
+                    </td>
 
                     <td>
                       <strong>
-                        {quarter.quarter}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {quarter.bookings}
-                    </td>
-
-                    <td>
-                      {money(
-                        quarter.ticketValue
-                      )}
-                    </td>
-
-                    <td>
-                      {money(
-                        quarter.collected
-                      )}
-                    </td>
-
-                    <td>
-                      <strong
-                        style={{
-                          color:
-                            quarter.profit >= 0
-                              ? "green"
-                              : "red",
-                        }}
-                      >
                         {money(
-                          quarter.profit
+                          item.totalProfit
                         )}
                       </strong>
                     </td>
-
                   </tr>
                 )
               )}
-
             </tbody>
-
           </table>
+        </div>
+      </section>
 
+      {/* =====================================
+          YEARLY PERFORMANCE
+          ===================================== */}
+
+      {selectedYear === "all" && (
+        <section
+          className="card report-panel"
+          style={{
+            marginTop: 24,
+          }}
+        >
+          <div className="report-panel-header">
+            <div>
+              <h2>
+                Yearly Performance
+              </h2>
+
+              <p className="muted">
+                Complete business
+                performance by year
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              overflowX: "auto",
+              marginTop: 20,
+            }}
+          >
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    Year
+                  </th>
+
+                  <th>
+                    Ticket Profit
+                  </th>
+
+                  <th>
+                    Service Profit
+                  </th>
+
+                  <th>
+                    Total Profit
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {yearlyReport.map(
+                  (item) => (
+                    <tr key={item.year}>
+                      <td>
+                        <strong>
+                          {item.year}
+                        </strong>
+                      </td>
+
+                      <td>
+                        {money(
+                          item.ticketProfit
+                        )}
+                      </td>
+
+                      <td>
+                        {money(
+                          item.serviceProfit
+                        )}
+                      </td>
+
+                      <td>
+                        <strong>
+                          {money(
+                            item.totalProfit
+                          )}
+                        </strong>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* =====================================
+          QUARTERLY PERFORMANCE
+          ===================================== */}
+
+      <section
+        className="card report-panel"
+        style={{
+          marginTop: 24,
+        }}
+      >
+        <div className="report-panel-header">
+          <div>
+            <h2>
+              Quarterly Performance
+            </h2>
+
+            <p className="muted">
+              Business profit by
+              quarter
+            </p>
+          </div>
         </div>
 
+        <div
+          className="grid grid-4"
+          style={{
+            marginTop: 20,
+          }}
+        >
+          {quarterlyReport.map(
+            (item) => (
+              <div
+                className="quarter-card"
+                key={item.quarter}
+              >
+                <span>
+                  {item.quarter}
+                </span>
+
+                <strong>
+                  {money(
+                    item.totalProfit
+                  )}
+                </strong>
+
+                <small>
+                  Ticket:{" "}
+                  {money(
+                    item.ticketProfit
+                  )}
+                </small>
+
+                <small>
+                  Services:{" "}
+                  {money(
+                    item.serviceProfit
+                  )}
+                </small>
+              </div>
+            )
+          )}
+        </div>
       </section>
 
     </main>

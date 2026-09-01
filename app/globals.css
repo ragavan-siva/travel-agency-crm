@@ -1230,3 +1230,258 @@ td {
   }
 
 }
+
+/* =========================================
+   REPORTS PAGE
+   ========================================= */
+
+.reports-page {
+  padding-bottom: 60px;
+}
+
+.report-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-section-title h2 {
+  margin: 0;
+}
+
+.report-stat {
+  min-height: 125px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.report-stat strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.report-stat small {
+  margin-top: 8px;
+  color: #64748b;
+}
+
+.report-stat-highlight {
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(
+    135deg,
+    #eff6ff,
+    #ffffff
+  );
+}
+
+.report-panel {
+  overflow: hidden;
+}
+
+.report-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.report-panel-header h2 {
+  margin: 0;
+}
+
+.report-mini-stat {
+  padding: 18px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.report-mini-stat span {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.report-mini-stat strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 21px;
+  color: #0f172a;
+}
+
+/* =========================================
+   PROFIT CHART
+   ========================================= */
+
+.profit-chart {
+  height: 300px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 8px 0;
+}
+
+.profit-chart-column {
+  flex: 1;
+  min-width: 35px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.profit-chart-value {
+  height: 28px;
+  font-size: 9px;
+  color: #64748b;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.profit-chart-bar-area {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 0;
+}
+
+.profit-chart-bar {
+  width: min(42px, 75%);
+  min-height: 3px;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(
+    180deg,
+    #2563eb,
+    #60a5fa
+  );
+  transition:
+    height 0.3s ease,
+    transform 0.2s ease;
+}
+
+.profit-chart-bar:hover {
+  transform: translateY(-3px);
+}
+
+.profit-chart-column > span {
+  height: 35px;
+  padding-top: 9px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* =========================================
+   QUARTER CARDS
+   ========================================= */
+
+.quarter-card {
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.quarter-card > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.quarter-card strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 23px;
+  color: #0f172a;
+}
+
+.quarter-card small {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+}
+
+/* =========================================
+   DATA TABLE
+   ========================================= */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 13px 12px;
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* =========================================
+   MOBILE REPORTS
+   ========================================= */
+
+@media (max-width: 900px) {
+  .profit-chart {
+    height: 240px;
+    gap: 5px;
+  }
+
+  .profit-chart-value {
+    font-size: 8px;
+  }
+
+  .report-stat strong {
+    font-size: 23px;
+  }
+}
+
+@media (max-width: 700px) {
+  .reports-page {
+    padding-bottom: 35px;
+  }
+
+  .report-section-title,
+  .report-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .profit-chart {
+    height: 220px;
+    overflow-x: auto;
+    min-width: 600px;
+  }
+
+  .report-panel {
+    overflow-x: auto;
+  }
+
+  .data-table {
+    min-width: 650px;
+  }
+
+  .quarter-card {
+    padding: 15px;
+  }
+}
