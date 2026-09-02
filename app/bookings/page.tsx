@@ -311,6 +311,11 @@ export default function BookingsPage() {
       let customerId =
         editingBooking?.customer_id || null;
 
+      // Phone number is optional.
+      // Empty phone values are stored as NULL.
+      const phoneValue =
+        form.phone.trim() || null;
+
       /*
        * UPDATE EXISTING CUSTOMER
        */
@@ -320,7 +325,7 @@ export default function BookingsPage() {
           .from("customers")
           .update({
             full_name: form.fullName.trim(),
-            phone: form.phone.trim() || null,
+            phone: phoneValue,
             email: form.email.trim() || null,
           })
           .eq("id", customerId);
@@ -334,14 +339,14 @@ export default function BookingsPage() {
        * FIND EXISTING CUSTOMER
        */
 
-      if (!customerId && form.phone.trim()) {
+      if (!customerId && phoneValue) {
         const {
           data: existingCustomer,
           error: customerSearchError,
         } = await supabase
           .from("customers")
           .select("id")
-          .eq("phone", form.phone.trim())
+          .eq("phone", phoneValue)
           .maybeSingle();
 
         if (customerSearchError) {
@@ -364,7 +369,7 @@ export default function BookingsPage() {
           .from("customers")
           .insert({
             full_name: form.fullName.trim(),
-            phone: form.phone.trim() || null,
+            phone: phoneValue,
             email: form.email.trim() || null,
           })
           .select("id")
@@ -424,24 +429,23 @@ export default function BookingsPage() {
        * BOOKING DATA
        */
 
-      const bookingData = {
-        customer_id: customerId,
-        booking_date: bookingDate,
-        booking_type: form.bookingType,
-        origin: form.origin.trim() || null,
-        destination:
-          form.destination.trim() || null,
-        departure_at: departureAt,
-        passenger_count:
-          Number(form.passengerCount) || 1,
-        ticket_amount: ticketPrice,
-        paid_amount: collectedAmount,
-        payment_method: form.paymentMethod,
-        payment_status: paymentStatus,
-        booking_status: form.bookingStatus,
-        notes: form.notes.trim() || null,
-      };
-
+        const bookingData = {
+          customer_id: customerId,
+          booking_type: form.bookingType,
+          booking_date: form.bookingDate || null,
+          origin: form.origin.trim() || null,
+          destination:
+            form.destination.trim() || null,
+          departure_at: departureAt,
+          passenger_count:
+            Number(form.passengerCount) || 1,
+          ticket_amount: ticketPrice,
+          paid_amount: collectedAmount,
+          payment_method: form.paymentMethod,
+          payment_status: paymentStatus,
+          booking_status: form.bookingStatus,
+          notes: form.notes.trim() || null,
+        };
       /*
        * UPDATE
        */
@@ -494,15 +498,25 @@ export default function BookingsPage() {
       closeForm();
 
       await loadBookings();
-    } catch (error) {
-      console.error(error);
+      } catch (error: any) {
+        console.error("SAVE BOOKING ERROR:", error);
 
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to save booking."
-      );
-    } finally {
+        const errorMessage =
+          error?.message ||
+          error?.error_description ||
+          error?.details ||
+          error?.hint ||
+          "Unable to save booking.";
+
+        console.error("ERROR MESSAGE:", error?.message ?? "");
+        console.error("ERROR CODE:", error?.code ?? "");
+        console.error("ERROR DETAILS:", error?.details ?? "");
+        console.error("ERROR HINT:", error?.hint ?? "");
+
+        setMessage(
+          `Unable to save booking: ${errorMessage}`
+        );
+      } finally {
       setSaving(false);
     }
   }
@@ -732,12 +746,13 @@ export default function BookingsPage() {
             <div className="field">
 
               <label className="label">
-                Phone *
+                Phone
               </label>
 
               <input
                 className="input"
-                required
+                type="tel"
+                placeholder="Optional"
                 value={form.phone}
                 onChange={(e) =>
                   updateForm(
