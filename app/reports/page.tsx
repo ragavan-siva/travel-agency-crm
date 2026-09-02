@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 
 type Booking = {
   id: string;
+  booking_date: string | null;
   departure_at: string | null;
   ticket_amount: number | null;
   paid_amount: number | null;
@@ -109,16 +110,26 @@ export default function ReportsPage() {
         return;
       }
 
+      /*
+       * IMPORTANT:
+       *
+       * booking_date = Booking Date
+       * departure_at = Travel Date
+       *
+       * Reports MUST use booking_date.
+       * departure_at is only kept here for other future uses.
+       */
       const bookingsResult = await supabase
         .from("bookings")
         .select(`
           id,
+          booking_date,
           departure_at,
           ticket_amount,
           paid_amount,
           booking_status
         `)
-        .order("departure_at", {
+        .order("booking_date", {
           ascending: false,
           nullsFirst: false,
         });
@@ -127,6 +138,9 @@ export default function ReportsPage() {
         throw bookingsResult.error;
       }
 
+      /*
+       * Services use service_date.
+       */
       const servicesResult = await supabase
         .from("services")
         .select(`
@@ -179,15 +193,17 @@ export default function ReportsPage() {
 
   /*
    * AVAILABLE YEARS
+   *
+   * Ticket years come from BOOKING DATE.
+   * Service years come from SERVICE DATE.
    */
-
   const availableYears = useMemo(() => {
     const years = new Set<number>();
 
     bookings.forEach((booking) => {
-      if (booking.departure_at) {
+      if (booking.booking_date) {
         years.add(
-          getYear(booking.departure_at)
+          getYear(booking.booking_date)
         );
       }
     });
@@ -210,22 +226,23 @@ export default function ReportsPage() {
   /*
    * FILTERED BOOKINGS
    *
-   * For tickets, Travel Date is currently
-   * being treated as Booking Date as requested.
+   * VERY IMPORTANT:
+   * Ticket reports are filtered using BOOKING DATE.
+   *
+   * NOT departure_at.
    */
-
   const filteredBookings = useMemo(() => {
     if (selectedYear === "all") {
       return bookings;
     }
 
     return bookings.filter((booking) => {
-      if (!booking.departure_at) {
+      if (!booking.booking_date) {
         return false;
       }
 
       return (
-        getYear(booking.departure_at) ===
+        getYear(booking.booking_date) ===
         selectedYear
       );
     });
@@ -233,8 +250,9 @@ export default function ReportsPage() {
 
   /*
    * FILTERED SERVICES
+   *
+   * Services are filtered using SERVICE DATE.
    */
-
   const filteredServices = useMemo(() => {
     if (selectedYear === "all") {
       return services;
@@ -274,6 +292,11 @@ export default function ReportsPage() {
     );
   }, [filteredBookings]);
 
+  /*
+   * Ticket Profit
+   *
+   * Collected - Ticket Value
+   */
   const ticketProfit =
     ticketCollected - ticketValue;
 
@@ -373,23 +396,32 @@ export default function ReportsPage() {
   /*
    * MONTHLY REPORT
    *
+   * Ticket month = BOOKING DATE
+   * Service month = SERVICE DATE
+   *
    * When Overall is selected:
-   * combines January from all years,
-   * February from all years, etc.
+   * January = January from all years
+   * February = February from all years
+   * etc.
    */
-
   const monthlyReport = useMemo(() => {
     return months.map(
       (monthName, monthIndex) => {
+        /*
+         * BOOKING DATE USED HERE
+         */
         const monthBookings =
           filteredBookings.filter(
             (booking) =>
-              booking.departure_at &&
+              booking.booking_date &&
               getMonth(
-                booking.departure_at
+                booking.booking_date
               ) === monthIndex
           );
 
+        /*
+         * SERVICE DATE USED HERE
+         */
         const monthServices =
           filteredServices.filter(
             (service) =>
@@ -466,8 +498,12 @@ export default function ReportsPage() {
 
   /*
    * QUARTERLY REPORT
+   *
+   * Based on monthly report.
+   *
+   * Ticket data inside monthly report
+   * already uses BOOKING DATE.
    */
-
   const quarterlyReport = useMemo(() => {
     return [0, 1, 2, 3].map(
       (quarterIndex) => {
@@ -514,21 +550,28 @@ export default function ReportsPage() {
   /*
    * YEARLY REPORT
    *
-   * Used mainly when Overall is selected.
+   * IMPORTANT:
+   * Ticket year = BOOKING DATE.
+   * Service year = SERVICE DATE.
    */
-
   const yearlyReport = useMemo(() => {
     return availableYears
       .map((year) => {
+        /*
+         * BOOKING DATE USED HERE
+         */
         const yearBookings =
           bookings.filter(
             (booking) =>
-              booking.departure_at &&
+              booking.booking_date &&
               getYear(
-                booking.departure_at
+                booking.booking_date
               ) === year
           );
 
+        /*
+         * SERVICE DATE USED HERE
+         */
         const yearServices =
           services.filter(
             (service) =>
