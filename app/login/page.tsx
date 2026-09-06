@@ -51,9 +51,10 @@ export default function LoginPage() {
 
   if (checkingSession) {
     return (
-      <main className="ai-login-page">
-        <div className="ai-login-loader">
-          <div className="ai-loader-ring" />
+      <main className="aif-page">
+        <div className="aif-aurora" />
+        <div className="aif-loading">
+          <div className="aif-ring" />
           <p>Preparing your workspace...</p>
         </div>
       </main>
@@ -61,72 +62,68 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="ai-login-page">
+    <main className="aif-page">
 
-      {/* Ambient background */}
-      <div className="ai-grid" />
-      <div className="ai-glow ai-glow-one" />
-      <div className="ai-glow ai-glow-two" />
-      <div className="ai-glow ai-glow-three" />
+      {/* Ambient premium background */}
+      <div className="aif-aurora" />
+      <div className="aif-orbit one" />
+      <div className="aif-orbit two" />
 
-      {/* Floating AI-style elements */}
-      <div className="ai-float ai-float-one">
-        <span className="float-dot" />
+      {/* Floating glass panels */}
+      <div className="aif-float aif-float-one">
+        <div className="aif-float-icon indigo">◆</div>
         <div>
-          <strong>Travel Operations</strong>
-          <small>Connected</small>
+          <strong>Live sync</strong>
+          <small>Itineraries updating</small>
         </div>
       </div>
 
-      <div className="ai-float ai-float-two">
-        <span className="float-icon">✦</span>
+      <div className="aif-float aif-float-two">
+        <div className="aif-float-icon champagne">24</div>
         <div>
-          <strong>Smart Workspace</strong>
-          <small>Ready to work</small>
+          <strong>Trips today</strong>
+          <small>Across 6 regions</small>
         </div>
       </div>
 
-      <div className="ai-float ai-float-three">
-        <span className="float-icon">↗</span>
+      <div className="aif-float aif-float-three">
+        <div className="aif-float-icon ink">✓</div>
         <div>
-          <strong>Business Insights</strong>
-          <small>Always organized</small>
+          <strong>Approvals moving</strong>
+          <small>No blockers</small>
         </div>
       </div>
 
-      <div className="ai-orbit orbit-one" />
-      <div className="ai-orbit orbit-two" />
+      {/* Main glass card */}
+      <section className="aif-card">
+        <div className="aif-card-inner">
 
-      {/* Center login */}
-      <section className="ai-login-card">
-
-        <div className="ai-card-glow" />
-
-        <div className="ai-card-content">
-
-
-          <div className="ai-heading">
-
-
-            <h1>
-              Welcome
-              <br />
-              <span>back.</span>
-            </h1>
-
-            <p>
-              Sign in to continue to your travel
-              operations workspace.
-            </p>
+          <div className="aif-brandrow">
+            <div className="aif-mark">
+              <span>SR</span>
+            </div>
+            <div className="aif-brand-text">
+              <strong>SR Travels</strong>
+              <span>Travel CRM</span>
+            </div>
+            <div className="aif-pill">
+              <i />
+              Live
+            </div>
           </div>
 
-          <form onSubmit={login} className="ai-login-form">
+          <div className="aif-heading">
+            <h1>Welcome back</h1>
+            <p>If you don't have account, contact ragavnsiva@gmail.com</p>
+          </div>
 
-            <div className="ai-field">
+          <form onSubmit={login} className="aif-form">
+
+            <div className="aif-field">
               <label htmlFor="email">Email address</label>
 
-              <div className="ai-input">
-                <span className="ai-input-symbol">@</span>
+              <div className="aif-input">
+                <span className="aif-input-mark">@</span>
 
                 <input
                   id="email"
@@ -140,11 +137,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="ai-field">
+            <div className="aif-field">
               <label htmlFor="password">Password</label>
 
-              <div className="ai-input">
-                <span className="ai-input-symbol">•</span>
+              <div className="aif-input">
+                <span className="aif-input-mark">•</span>
 
                 <input
                   id="password"
@@ -158,7 +155,7 @@ export default function LoginPage() {
 
                 <button
                   type="button"
-                  className="ai-show-password"
+                  className="aif-toggle"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? "Hide" : "Show"}
@@ -167,31 +164,40 @@ export default function LoginPage() {
             </div>
 
             {message && (
-              <div className="ai-error" role="alert">
-                <span>!</span>
+              <div className="aif-error" role="alert">
+                <i>!</i>
                 <p>{message}</p>
               </div>
             )}
 
             <button
               type="submit"
-              className="ai-signin"
+              className="aif-submit"
               disabled={loading}
             >
               <span>
-                {loading ? "Signing in..." : "Continue to workspace"}
+                {loading ? "Logging in..." : "Continue"}
               </span>
 
-              {!loading && <span className="ai-signin-arrow">→</span>}
+              {!loading && (
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M2 12.5L21 12.5M21 12.5L14.5 6M21 12.5L14.5 19"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
             </button>
 
           </form>
 
-          <div className="ai-footer">
-            <span>TRAVEL MANAGEMENT PLATFORM</span>
+          <div className="aif-footer">
+            <span>Travel company management platform</span>
             <span>© {new Date().getFullYear()}</span>
           </div>
-
         </div>
       </section>
     </main>
