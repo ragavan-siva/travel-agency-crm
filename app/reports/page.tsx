@@ -10,6 +10,21 @@ type Booking = {
   ticket_amount: number | null;
   paid_amount: number | null;
   booking_status: string | null;
+  booking_reference: string | null;
+  booking_type: string | null;
+  origin: string | null;
+  destination: string | null;
+  customer_id: string | null;
+  customers:
+    | {
+        full_name: string | null;
+        phone: string | null;
+      }
+    | {
+        full_name: string | null;
+        phone: string | null;
+      }[]
+    | null;
 };
 
 type Service = {
@@ -34,6 +49,19 @@ type YearlyReport = {
   ticketProfit: number;
   serviceProfit: number;
   totalProfit: number;
+};
+
+type MonthlyTransaction = {
+  id: string;
+  type: "Ticket" | "Service";
+  date: string;
+  customer: string;
+  details: string;
+  ticketValue: number;
+  collected: number;
+  cost: number;
+  profit: number;
+  travelDate: string | null;
 };
 
 const months = [
@@ -76,8 +104,30 @@ function getMonth(date: string) {
   return Number(date.slice(5, 7)) - 1;
 }
 
-function getQuarter(month: number) {
-  return Math.floor(month / 3);
+function formatDate(date: string | null) {
+  if (!date) return "-";
+
+  if (date.length === 10) {
+    const parsed = new Date(`${date}T00:00:00`);
+
+    return parsed.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return parsed.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export default function ReportsPage() {
@@ -93,6 +143,13 @@ export default function ReportsPage() {
    */
   const [selectedYear, setSelectedYear] =
     useState<number | "all">("all");
+
+  /*
+   * Click a month to open all transactions
+   * belonging to that month.
+   */
+  const [selectedMonth, setSelectedMonth] =
+    useState<number | null>(null);
 
   async function loadReports() {
     try {
@@ -127,7 +184,16 @@ export default function ReportsPage() {
           departure_at,
           ticket_amount,
           paid_amount,
-          booking_status
+          booking_status,
+          booking_reference,
+          booking_type,
+          origin,
+          destination,
+          customer_id,
+          customers (
+            full_name,
+            phone
+          )
         `)
         .order("booking_date", {
           ascending: false,
@@ -647,24 +713,161 @@ export default function ReportsPage() {
   }, [availableYears, bookings, services]);
 
   /*
-   * GRAPH MAXIMUMS
+   * MONTHLY TRANSACTION DRILL-DOWN
+   *
+   * Ticket month = Booking Date
+   * Service month = Service Date
+   *
+   * If Overall / All Years is selected,
+   * the selected month includes that month
+   * from every year.
    */
+  const selectedMonthTransactions =
+    useMemo<MonthlyTransaction[]>(() => {
+      if (selectedMonth === null) {
+        return [];
+      }
 
-  const maxMonthlyProfit =
-    Math.max(
-      ...monthlyReport.map((item) =>
-        Math.abs(item.totalProfit)
-      ),
-      1
-    );
+      const monthBookings =
+        filteredBookings.filter(
+          (booking) =>
+            booking.booking_date &&
+            getMonth(
+              booking.booking_date
+            ) === selectedMonth
+        );
 
-  const maxYearlyProfit =
-    Math.max(
-      ...yearlyReport.map((item) =>
-        Math.abs(item.totalProfit)
-      ),
-      1
+      const monthServices =
+        filteredServices.filter(
+          (service) =>
+            service.service_date &&
+            getMonth(
+              service.service_date
+            ) === selectedMonth
+        );
+
+      const ticketTransactions =
+        monthBookings.map((booking) => {
+          const ticketValue = Number(
+            booking.ticket_amount || 0
+          );
+
+          const collected = Number(
+            booking.paid_amount || 0
+          );
+
+          const customer =
+            Array.isArray(booking.customers)
+              ? booking.customers[0]
+              : booking.customers;
+
+          const route = `${booking.origin || "-"} → ${
+            booking.destination || "-"
+          }`;
+
+          const reference =
+            booking.booking_reference
+              ? ` • ${booking.booking_reference}`
+              : "";
+
+          return {
+            id: `ticket-${booking.id}`,
+            type: "Ticket" as const,
+            date: booking.booking_date || "",
+            customer:
+              customer?.full_name ||
+              "Unknown Customer",
+            details:
+              `${route}${reference}`,
+            ticketValue,
+            collected,
+            cost: 0,
+            profit:
+              collected - ticketValue,
+            travelDate:
+              booking.departure_at,
+          };
+        });
+
+      const serviceTransactions =
+        monthServices.map((service) => {
+          const collected = Number(
+            service.collected_amount || 0
+          );
+
+          const cost = Number(
+            service.cost_amount || 0
+          );
+
+          return {
+            id: `service-${service.id}`,
+            type: "Service" as const,
+            date: service.service_date || "",
+            customer:
+              service.customer_name ||
+              "Unknown Customer",
+            details:
+              getServiceName(service),
+            ticketValue: 0,
+            collected,
+            cost,
+            profit: collected - cost,
+            travelDate: null,
+          };
+        });
+
+      return [
+        ...ticketTransactions,
+        ...serviceTransactions,
+      ].sort((a, b) =>
+        b.date.localeCompare(a.date)
+      );
+    }, [
+      filteredBookings,
+      filteredServices,
+      selectedMonth,
+    ]);
+
+  const selectedMonthReport =
+    selectedMonth === null
+      ? null
+      : monthlyReport[selectedMonth];
+
+  /*
+   * Select / deselect a month.
+   *
+   * Scrolling is handled in a separate useEffect
+   * AFTER React renders the transaction panel.
+   */
+  function selectMonth(monthIndex: number) {
+    setSelectedMonth((current) =>
+      current === monthIndex
+        ? null
+        : monthIndex
     );
+  }
+
+  /*
+   * React must render the selected-month panel first.
+   * Then scroll to it. This fixes the issue where the
+   * old setTimeout ran before the element existed.
+   */
+  useEffect(() => {
+    if (selectedMonth === null) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById("monthly-transactions")
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedMonth]);
 
   /*
    * DISPLAY LABEL
@@ -922,165 +1125,6 @@ export default function ReportsPage() {
               Tickets + Services
             </small>
           </div>
-        </div>
-      </section>
-
-      {/* =====================================
-          ALL-TIME YEARLY GRAPH
-          ===================================== */}
-
-      {selectedYear === "all" &&
-        yearlyReport.length > 0 && (
-          <section
-            className="card report-panel"
-            style={{
-              marginTop: 24,
-            }}
-          >
-            <div className="report-panel-header">
-              <div>
-                <h2>
-                  Profit by Year
-                </h2>
-
-                <p className="muted">
-                  All-time business
-                  profitability
-                </p>
-              </div>
-            </div>
-
-            <div
-              className="profit-chart"
-              style={{
-                marginTop: 25,
-              }}
-            >
-              {yearlyReport.map(
-                (item) => {
-                  const height =
-                    Math.max(
-                      (Math.abs(
-                        item.totalProfit
-                      ) /
-                        maxYearlyProfit) *
-                        100,
-                      item.totalProfit === 0
-                        ? 2
-                        : 5
-                    );
-
-                  return (
-                    <div
-                      className="profit-chart-column"
-                      key={item.year}
-                    >
-                      <div className="profit-chart-value">
-                        {item.totalProfit !==
-                        0
-                          ? money(
-                              item.totalProfit
-                            )
-                          : ""}
-                      </div>
-
-                      <div className="profit-chart-bar-area">
-                        <div
-                          className="profit-chart-bar"
-                          style={{
-                            height: `${height}%`,
-                          }}
-                        />
-                      </div>
-
-                      <span>
-                        {item.year}
-                      </span>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </section>
-        )}
-
-      {/* =====================================
-          MONTHLY PROFIT
-          ===================================== */}
-
-      <section
-        className="card report-panel"
-        style={{
-          marginTop: 24,
-        }}
-      >
-        <div className="report-panel-header">
-          <div>
-            <h2>
-              Monthly Profit Performance
-            </h2>
-
-            <p className="muted">
-              {selectedYear === "all"
-                ? "Combined monthly performance across all years"
-                : `Monthly performance for ${selectedYear}`}
-            </p>
-          </div>
-        </div>
-
-        <div
-          className="profit-chart"
-          style={{
-            marginTop: 25,
-          }}
-        >
-          {monthlyReport.map(
-            (item) => {
-              const height =
-                Math.max(
-                  (Math.abs(
-                    item.totalProfit
-                  ) /
-                    maxMonthlyProfit) *
-                    100,
-                  item.totalProfit === 0
-                    ? 2
-                    : 5
-                );
-
-              return (
-                <div
-                  className="profit-chart-column"
-                  key={item.month}
-                >
-                  <div className="profit-chart-value">
-                    {item.totalProfit !==
-                    0
-                      ? money(
-                          item.totalProfit
-                        )
-                      : ""}
-                  </div>
-
-                  <div className="profit-chart-bar-area">
-                    <div
-                      className="profit-chart-bar"
-                      style={{
-                        height: `${height}%`,
-                      }}
-                    />
-                  </div>
-
-                  <span>
-                    {item.month.slice(
-                      0,
-                      3
-                    )}
-                  </span>
-                </div>
-              );
-            }
-          )}
         </div>
       </section>
 
@@ -1378,12 +1422,51 @@ export default function ReportsPage() {
 
             <tbody>
               {monthlyReport.map(
-                (item) => (
-                  <tr key={item.month}>
+                (item, index) => (
+                  <tr
+                    key={item.month}
+                    onClick={() =>
+                      selectMonth(index)
+                    }
+                    style={{
+                      cursor: "pointer",
+                      background:
+                        selectedMonth === index
+                          ? "#f1f5f9"
+                          : undefined,
+                    }}
+                  >
                     <td>
-                      <strong>
-                        {item.month}
-                      </strong>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectMonth(index);
+                        }}
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          cursor: "pointer",
+                          font: "inherit",
+                          textAlign: "left",
+                          color: "#0f172a",
+                        }}
+                      >
+                        <strong>
+                          {item.month}
+                        </strong>
+
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "#64748b",
+                            marginTop: 3,
+                          }}
+                        >
+                          Click to view transactions
+                        </div>
+                      </button>
                     </td>
 
                     <td>
@@ -1412,6 +1495,229 @@ export default function ReportsPage() {
           </table>
         </div>
       </section>
+
+      {/* =====================================
+          SELECTED MONTH TRANSACTIONS
+          ===================================== */}
+
+      {selectedMonth !== null &&
+        selectedMonthReport && (
+          <section
+            id="monthly-transactions"
+            className="card report-panel"
+            style={{
+              marginTop: 24,
+              marginBottom: 24,
+              border: "1px solid #cbd5e1",
+              scrollMarginTop: 24,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0 }}>
+                  {selectedMonthReport.month} Transactions
+                </h2>
+
+                <p className="muted">
+                  {selectedYear === "all"
+                    ? `All years • ${selectedMonthTransactions.length} transactions`
+                    : `${selectedYear} • ${selectedMonthTransactions.length} transactions`}
+                  {" • "}
+                  Booking Date / Service Date
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  setSelectedMonth(null)
+                }
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              className="grid grid-4"
+              style={{ marginTop: 20 }}
+            >
+              <div className="report-mini-stat">
+                <span>Transactions</span>
+                <strong>
+                  {selectedMonthTransactions.length}
+                </strong>
+              </div>
+
+              <div className="report-mini-stat">
+                <span>Ticket Bookings</span>
+                <strong>
+                  {selectedMonthReport.ticketProfit === 0 &&
+                  selectedMonthTransactions.filter(
+                    (item) => item.type === "Ticket"
+                  ).length === 0
+                    ? 0
+                    : selectedMonthTransactions.filter(
+                        (item) => item.type === "Ticket"
+                      ).length}
+                </strong>
+              </div>
+
+              <div className="report-mini-stat">
+                <span>Service Jobs</span>
+                <strong>
+                  {selectedMonthTransactions.filter(
+                    (item) => item.type === "Service"
+                  ).length}
+                </strong>
+              </div>
+
+              <div className="report-mini-stat">
+                <span>Total Profit</span>
+                <strong>
+                  {money(
+                    selectedMonthReport.totalProfit
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            {selectedMonthTransactions.length === 0 ? (
+              <div
+                style={{
+                  marginTop: 20,
+                  padding: 28,
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  textAlign: "center",
+                }}
+              >
+                <p className="muted">
+                  No transactions found for this month.
+                </p>
+              </div>
+            ) : (
+              <div
+                style={{
+                  overflowX: "auto",
+                  marginTop: 20,
+                }}
+              >
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Customer</th>
+                      <th>Details</th>
+                      <th>Travel Date</th>
+                      <th>Ticket Value</th>
+                      <th>Collected</th>
+                      <th>Cost</th>
+                      <th>Profit</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {selectedMonthTransactions.map(
+                      (transaction) => (
+                        <tr key={transaction.id}>
+                          <td>
+                            {formatDate(
+                              transaction.date
+                            )}
+                          </td>
+
+                          <td>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "4px 9px",
+                                borderRadius: 999,
+                                background:
+                                  transaction.type ===
+                                  "Ticket"
+                                    ? "#eef2ff"
+                                    : "#ecfdf5",
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {transaction.type}
+                            </span>
+                          </td>
+
+                          <td>
+                            <strong>
+                              {transaction.customer}
+                            </strong>
+                          </td>
+
+                          <td>
+                            {transaction.details}
+                          </td>
+
+                          <td>
+                            {transaction.type === "Ticket"
+                              ? formatDate(
+                                  transaction.travelDate
+                                )
+                              : "-"}
+                          </td>
+
+                          <td>
+                            {transaction.type === "Ticket"
+                              ? money(
+                                  transaction.ticketValue
+                                )
+                              : "-"}
+                          </td>
+
+                          <td>
+                            {money(
+                              transaction.collected
+                            )}
+                          </td>
+
+                          <td>
+                            {transaction.type === "Service"
+                              ? money(
+                                  transaction.cost
+                                )
+                              : "-"}
+                          </td>
+
+                          <td>
+                            <strong
+                              style={{
+                                color:
+                                  transaction.profit >= 0
+                                    ? "green"
+                                    : "red",
+                              }}
+                            >
+                              {money(
+                                transaction.profit
+                              )}
+                            </strong>
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
       {/* =====================================
           YEARLY PERFORMANCE
