@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { downloadExcel } from "@/lib/exportExcel";
 
 type Customer = {
   id?: string;
@@ -623,67 +622,6 @@ export default function BookingsPage() {
     ]);
 
   /*
-   * EXCEL EXPORT
-   */
-
-  function handleDownloadExcel() {
-    if (!filteredBookings.length) {
-      alert("No bookings available to export.");
-      return;
-    }
-
-    const rows = filteredBookings.map((booking) => {
-      const customer = booking.customers;
-
-      const ticketValue = Number(
-        booking.ticket_amount ?? 0
-      );
-
-      const collected = Number(
-        booking.paid_amount ?? 0
-      );
-
-      const profit = collected - ticketValue;
-
-      return {
-        Name: customer?.full_name ?? "",
-        Type: booking.booking_type ?? "",
-        Date: booking.booking_date
-          ? new Date(
-              `${booking.booking_date}T00:00:00`
-            ).toLocaleDateString("en-GB")
-          : "",
-        "Travel Date": booking.departure_at
-          ? new Date(
-              booking.departure_at
-            ).toLocaleDateString("en-GB")
-          : "",
-        From: booking.origin ?? "",
-        To: booking.destination ?? "",
-        "Ticket Price": ticketValue,
-        "Collected Amount": collected,
-        Profit: profit,
-        "Payment Method":
-          booking.payment_method ?? "",
-        "Payment Status":
-          booking.payment_status ?? "",
-        "Booking Status":
-          booking.booking_status ?? "",
-      };
-    });
-
-    const today = new Date()
-      .toISOString()
-      .slice(0, 10);
-
-    downloadExcel(
-      rows,
-      "Bookings",
-      `Sri_Ragavendra_Bookings_${today}.xlsx`
-    );
-  }
-
-  /*
    * FORM CALCULATIONS
    */
 
@@ -719,28 +657,12 @@ export default function BookingsPage() {
           </p>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
+        <button
+          className="btn"
+          onClick={openNewBooking}
         >
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={handleDownloadExcel}
-          >
-            Download Excel
-          </button>
-
-          <button
-            className="btn"
-            onClick={openNewBooking}
-          >
-            + New Booking
-          </button>
-        </div>
+          + New Booking
+        </button>
 
       </div>
 
