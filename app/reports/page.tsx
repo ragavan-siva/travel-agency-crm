@@ -248,13 +248,6 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadReports();
-
-    const interval = setInterval(
-      loadReports,
-      30000
-    );
-
-    return () => clearInterval(interval);
   }, []);
 
   /*
